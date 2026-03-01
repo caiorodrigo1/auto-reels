@@ -29,3 +29,11 @@ def save_transcription(task_number: int, text: str, video: dict) -> Path:
     file_path = task_dir / "transcription.txt"
     file_path.write_text(header + clean_text(text), encoding="utf-8")
     return file_path
+
+
+def get_narration_path(task_number: int) -> Path:
+    """Return the path for the narration audio file."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    task_dir = OUTPUT_DIR / today / f"task-{task_number:02d}"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    return task_dir / "narration.mp3"
