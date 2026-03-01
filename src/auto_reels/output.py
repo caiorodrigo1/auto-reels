@@ -1,0 +1,31 @@
+from __future__ import annotations
+
+import html
+import re
+from datetime import datetime, timezone
+from pathlib import Path
+
+from auto_reels.config import OUTPUT_DIR
+
+
+def clean_text(text: str) -> str:
+    """Remove HTML entities, tags, and stray symbols from transcript text."""
+    text = html.unescape(text)
+    text = re.sub(r"<[^>]+>", "", text)
+    text = re.sub(r">{1,}", "", text)
+    text = re.sub(r"\s{2,}", " ", text)
+    lines = [line.strip() for line in text.splitlines()]
+    return "\n".join(line for line in lines if line)
+
+
+def save_transcription(task_number: int, text: str, video: dict) -> Path:
+    """Save transcription to output/YYYY-MM-DD/task-NN/transcription.txt."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    task_dir = OUTPUT_DIR / today / f"task-{task_number:02d}"
+    task_dir.mkdir(parents=True, exist_ok=True)
+
+    header = f"# {video['title']}\n# Canal: {video['channel_title']}\n# https://youtube.com/watch?v={video['video_id']}\n# Views: {video['view_count']}\n\n"
+
+    file_path = task_dir / "transcription.txt"
+    file_path.write_text(header + clean_text(text), encoding="utf-8")
+    return file_path

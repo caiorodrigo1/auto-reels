@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "auto-reels"
+version = "0.1.0"
+description = "Pipeline para busca de YouTube Shorts e transcrição automática"
+authors = []
+packages = [{include = "auto_reels", from = "src"}]
+
+[tool.poetry.scripts]
+auto-reels = "auto_reels.cli:app"
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.15"
+google-api-python-client = "^2.0"
+youtube-transcript-api = "^1.0.0"
+httpx = "^0.28"
+python-dotenv = "^1.0"
+typer = "^0.15"
+rich = "^13.0"
+isodate = "^0.7"
+h2 = "^4.3.0"
+yt-dlp = "^2026.2.21"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
