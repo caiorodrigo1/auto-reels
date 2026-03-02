@@ -9,10 +9,11 @@ from auto_reels.youtube.api import search_recent_videos, get_video_details
 from auto_reels.youtube.shorts import filter_shorts, rank_and_select
 from auto_reels.transcription.service import transcribe
 from auto_reels.narration.elevenlabs import generate_speech
-from auto_reels.output import save_transcription, get_narration_path, clean_text
-from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY
+from auto_reels.gemini.agent import extract_characters
+from auto_reels.output import save_transcription, get_narration_path, save_characters, clean_text
+from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY
 
-app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração")
+app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens")
 console = Console()
 
 
@@ -20,9 +21,10 @@ console = Console()
 def run(
     days: int = typer.Option(SEARCH_DAYS, help="Dias para buscar vídeos recentes"),
     top: int = typer.Option(TOP_N, help="Quantidade de shorts para transcrever"),
-    narrate: bool = typer.Option(True, help="Gerar narração via ElevenLabs"),
+    narrate: bool = typer.Option(True, help="Gerar narração via ai33.pro"),
+    characters: bool = typer.Option(True, help="Extrair personagens via Claude web"),
 ):
-    """Busca shorts recentes, seleciona os mais vistos, transcreve e narra."""
+    """Busca shorts recentes, seleciona os mais vistos, transcreve, narra e extrai personagens."""
     channels = load_channels()
     if not channels:
         console.print("[red]Nenhum canal configurado em channels.json[/red]")
@@ -73,17 +75,30 @@ def run(
         path = save_transcription(i, text, video)
         console.print(f"  [green]Transcrição salva em {path}[/green]")
 
+        # Narração
         if narrate and AI33_API_KEY:
             console.print(f"  Gerando narração...")
             narration_path = get_narration_path(i)
             result = generate_speech(clean_text(text), narration_path)
             if result:
-                console.print(f"  [green]Narração salva em {result}[/green]\n")
+                console.print(f"  [green]Narração salva em {result}[/green]")
             else:
-                console.print(f"  [red]Falha ao gerar narração.[/red]\n")
+                console.print(f"  [red]Falha ao gerar narração.[/red]")
         elif narrate and not AI33_API_KEY:
-            console.print(f"  [yellow]AI33_API_KEY não configurada, pulando narração.[/yellow]\n")
-        else:
-            console.print()
+            console.print(f"  [yellow]AI33_API_KEY não configurada, pulando narração.[/yellow]")
+
+        # Extração de personagens
+        if characters and GEMINI_API_KEY:
+            console.print(f"  Extraindo personagens via Gemini...")
+            chars = extract_characters(clean_text(text))
+            if chars:
+                char_path = save_characters(i, chars)
+                console.print(f"  [green]Personagens salvos em {char_path}[/green]")
+            else:
+                console.print(f"  [red]Falha ao extrair personagens.[/red]")
+        elif characters and not GEMINI_API_KEY:
+            console.print(f"  [yellow]GEMINI_API_KEY não configurada, pulando personagens.[/yellow]")
+
+        console.print()
 
     console.print("[bold green]Concluído![/bold green]")

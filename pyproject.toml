@@ -19,6 +19,7 @@ rich = "^13.0"
 isodate = "^0.7"
 h2 = "^4.3.0"
 yt-dlp = "^2026.2.21"
+google-genai = "^1.65.0"
 
 [build-system]
 requires = ["poetry-core"]

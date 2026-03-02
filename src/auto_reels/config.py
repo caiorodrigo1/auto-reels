@@ -20,6 +20,10 @@ RAPIDAPI_HOST: str = os.environ.get(
 AI33_API_KEY: str = os.environ.get("AI33_API_KEY", "")
 AI33_VOICE_ID: str = os.environ.get("AI33_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
+CLAUDE_PROJECT_URL: str = os.environ.get("CLAUDE_PROJECT_URL", "")
+
+GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
+
 SEARCH_DAYS = 7
 TOP_N = 2
 MAX_SHORT_DURATION_SECONDS = 180
