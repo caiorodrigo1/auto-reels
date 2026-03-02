@@ -5,22 +5,22 @@ from pathlib import Path
 
 import httpx
 
-from auto_reels.config import ELEVENLABS_API_KEY, ELEVENLABS_VOICE_ID
+from auto_reels.config import AI33_API_KEY, AI33_VOICE_ID
 
 BASE_URL = "https://api.ai33.pro"
 
 
 def generate_speech(text: str, output_path: Path) -> Path | None:
     """Convert text to speech via ai33.pro TTS API and save as MP3."""
-    if not ELEVENLABS_API_KEY:
+    if not AI33_API_KEY:
         return None
 
     # 1. Submit TTS task
-    url = f"{BASE_URL}/v1/text-to-speech/{ELEVENLABS_VOICE_ID}"
+    url = f"{BASE_URL}/v1/text-to-speech/{AI33_VOICE_ID}"
     params = {"output_format": "mp3_44100_128"}
     headers = {
         "Content-Type": "application/json",
-        "xi-api-key": ELEVENLABS_API_KEY,
+        "xi-api-key": AI33_API_KEY,
     }
     payload = {
         "text": text,
@@ -80,11 +80,13 @@ def _poll_task(task_id: str, headers: dict, max_wait: int = 120) -> str | None:
                 print(f"    [DEBUG] Task done but no audio_url: {data}")
                 return None
 
-            if status in ("failed", "error"):
-                print(f"    [DEBUG] Task failed: {data.get('error_message')}")
+            if status == "error":
+                print(f"    [DEBUG] Task error: {data.get('error_message')}")
                 return None
 
-            # Still processing
+            # "doing" or other - still processing
+            progress = data.get("progress", 0)
+            print(f"    [DEBUG] Task progress: {progress}%")
             time.sleep(interval)
             elapsed += interval
 

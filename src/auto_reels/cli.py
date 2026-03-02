@@ -10,7 +10,7 @@ from auto_reels.youtube.shorts import filter_shorts, rank_and_select
 from auto_reels.transcription.service import transcribe
 from auto_reels.narration.elevenlabs import generate_speech
 from auto_reels.output import save_transcription, get_narration_path, clean_text
-from auto_reels.config import SEARCH_DAYS, TOP_N, ELEVENLABS_API_KEY
+from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY
 
 app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração")
 console = Console()
@@ -73,7 +73,7 @@ def run(
         path = save_transcription(i, text, video)
         console.print(f"  [green]Transcrição salva em {path}[/green]")
 
-        if narrate and ELEVENLABS_API_KEY:
+        if narrate and AI33_API_KEY:
             console.print(f"  Gerando narração...")
             narration_path = get_narration_path(i)
             result = generate_speech(clean_text(text), narration_path)
@@ -81,8 +81,8 @@ def run(
                 console.print(f"  [green]Narração salva em {result}[/green]\n")
             else:
                 console.print(f"  [red]Falha ao gerar narração.[/red]\n")
-        elif narrate and not ELEVENLABS_API_KEY:
-            console.print(f"  [yellow]ELEVENLABS_API_KEY não configurada, pulando narração.[/yellow]\n")
+        elif narrate and not AI33_API_KEY:
+            console.print(f"  [yellow]AI33_API_KEY não configurada, pulando narração.[/yellow]\n")
         else:
             console.print()
 
