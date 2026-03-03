@@ -81,25 +81,27 @@ def _configure_video_portrait(page: Page):
 
     # Select Video tab
     video_tab = page.get_by_role("tab", name=re.compile(r"Video|Vídeo"))
-    if video_tab.count() and not video_tab.first.get_attribute("aria-selected"):
+    if video_tab.count() and video_tab.first.get_attribute("aria-selected") != "true":
         video_tab.first.click()
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(1_000)
 
-    # Select Ingredients tab
+    # Wait for Ingredients tab to appear (it renders after Video is selected)
     ingredients_tab = page.get_by_role("tab", name="Ingredients")
-    if ingredients_tab.count() and not ingredients_tab.first.get_attribute("aria-selected"):
+    ingredients_tab.first.wait_for(state="visible", timeout=5_000)
+    if ingredients_tab.first.get_attribute("aria-selected") != "true":
         ingredients_tab.first.click()
-        page.wait_for_timeout(300)
+        page.wait_for_timeout(500)
+    print("    [CONFIG] Modo Ingredients selecionado")
 
     # Select Portrait (Retrato) tab
     portrait_tab = page.get_by_role("tab", name="Retrato")
-    if portrait_tab.count() and not portrait_tab.first.get_attribute("aria-selected"):
+    if portrait_tab.count() and portrait_tab.first.get_attribute("aria-selected") != "true":
         portrait_tab.first.click()
         page.wait_for_timeout(300)
 
     # Select x1 quantity
     x1_tab = page.get_by_role("tab", name="x1")
-    if x1_tab.count() and not x1_tab.first.get_attribute("aria-selected"):
+    if x1_tab.count() and x1_tab.first.get_attribute("aria-selected") != "true":
         x1_tab.first.click()
         page.wait_for_timeout(300)
 
@@ -108,12 +110,26 @@ def _configure_video_portrait(page: Page):
     page.wait_for_timeout(300)
 
 
-def _upload_character_images(page: Page, image_paths: list[Path]) -> int:
-    """Upload character reference images to the project. Returns count of successful uploads."""
-    uploaded = 0
+def _parse_char_key(filename: str) -> str | None:
+    """Extract character key (e.g. 'Char1') from image filename like 'char1___val_ria.png'."""
+    m = re.match(r"(char\d+)", filename, re.IGNORECASE)
+    return m.group(1).capitalize() if m else None
+
+
+def _upload_character_images(page: Page, image_paths: list[Path]) -> dict[str, bool]:
+    """Upload character reference images to the project.
+
+    Returns dict mapping character key (e.g. 'Char1') to upload success.
+    """
+    results: dict[str, bool] = {}
     for img_path in image_paths:
         if not img_path.exists():
             print(f"    [WARN] Imagem não encontrada: {img_path}")
+            continue
+
+        char_key = _parse_char_key(img_path.name)
+        if not char_key:
+            print(f"    [WARN] Não foi possível extrair char key de: {img_path.name}")
             continue
 
         # Click "Adicionar mídia"
@@ -127,18 +143,118 @@ def _upload_character_images(page: Page, image_paths: list[Path]) -> int:
         file_chooser = fc_info.value
         file_chooser.set_files(str(img_path))
 
-        # Wait for upload to complete or fail
-        page.wait_for_timeout(5_000)
+        # Count content grid links/items before upload (not UI icons)
+        # Flow project grid items are links with role="link"
+        grid_links_before = page.get_by_role("link").filter(has=page.locator("img")).count()
 
-        # Check for failure notification
-        failure = page.locator("text=Falha").first
-        if failure.is_visible():
-            print(f"    [WARN] Upload bloqueado para {img_path.name} (política do Google)")
+        # Wait for upload result
+        upload_ok = False
+        error_found = False
+        for i in range(30):  # up to ~15 seconds
+            page.wait_for_timeout(500)
+
+            # Check for success — more grid link items with images
+            grid_links_after = page.get_by_role("link").filter(has=page.locator("img")).count()
+            if grid_links_after > grid_links_before:
+                upload_ok = True
+                break
+
+            # Check for upload-specific error phrases
+            error_phrases = [
+                "proíbem o envio",
+                "não permitimos uploads",
+                "Falha no upload",
+                "famosas no momento",
+            ]
+            for phrase in error_phrases:
+                notif = page.locator(f"text={phrase}")
+                if notif.count() > 0:
+                    try:
+                        if notif.first.is_visible():
+                            err_text = notif.first.inner_text()
+                            print(f"    [DEBUG] Erro de upload: {err_text[:100]}")
+                            error_found = True
+                            break
+                    except Exception:
+                        pass
+            if error_found:
+                break
+
+        if upload_ok:
+            results[char_key] = True
+            print(f"    [OK] Imagem enviada: {char_key} ({img_path.name})")
         else:
-            uploaded += 1
-            print(f"    [OK] Imagem enviada: {img_path.name}")
+            if error_found:
+                print(f"    [WARN] Upload bloqueado para {char_key} ({img_path.name})")
+            else:
+                print(f"    [WARN] Upload timeout para {char_key} ({img_path.name})")
+            results[char_key] = False
+            # Dismiss any error/overlay
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
 
-    return uploaded
+    return results
+
+
+def _parse_scene_characters(characters_str: str) -> list[str]:
+    """Parse character list from prompt header like 'Char1, Char2 and Char3'."""
+    # Normalize separators: "Char1, Char2 and Char3" → ["Char1", "Char2", "Char3"]
+    chars = re.split(r"\s*,\s*|\s+and\s+|\s+e\s+", characters_str)
+    return [c.strip() for c in chars if c.strip()]
+
+
+def _attach_ingredients(page: Page, char_keys: list[str], uploaded: dict[str, bool]):
+    """Attach character ingredient images to the current prompt via @ picker.
+
+    For each character that was successfully uploaded, types @ and selects the image.
+    """
+    chars_to_attach = [c for c in char_keys if uploaded.get(c)]
+    if not chars_to_attach:
+        return
+
+    for char_key in chars_to_attach:
+        # Click the textbox to ensure focus
+        textbox = page.get_by_role("textbox").filter(has_text="O que você quer criar?")
+        if not textbox.count():
+            textbox = page.locator("[contenteditable='true']").last
+        textbox.click()
+        page.wait_for_timeout(300)
+
+        # Type @ to open ingredient picker
+        page.keyboard.type("@")
+        page.wait_for_timeout(1_000)
+
+        # The picker dialog should open — look for the search box
+        search_box = page.get_by_placeholder("Pesquisar recursos")
+        if not search_box.count():
+            print(f"    [WARN] Picker não abriu para {char_key}, pulando")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
+            continue
+
+        # The current project images should be visible (we uploaded them)
+        # Find clickable image items in the picker (try multiple selectors)
+        items = page.locator("[role='dialog'] img, [role='listbox'] img")
+        if items.count() == 0:
+            items = page.locator("img[alt='Untitled']")
+        if items.count() == 0:
+            # Broader fallback: any img inside the picker area
+            items = page.locator("[class*='picker'] img, [class*='resource'] img")
+
+        # Calculate index based on upload order
+        uploaded_keys = sorted([k for k, v in uploaded.items() if v])
+        idx = uploaded_keys.index(char_key) if char_key in uploaded_keys else 0
+
+        if items.count() > idx:
+            items.nth(idx).click()
+            page.wait_for_timeout(500)
+            print(f"    [OK] Ingredient {char_key} anexado ao prompt")
+        else:
+            print(f"    [WARN] Imagem de {char_key} não encontrada no picker ({items.count()} itens)")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(500)
 
 
 def _count_completed_videos(page: Page) -> int:
@@ -153,8 +269,17 @@ def _count_completed_videos(page: Page) -> int:
     return play_icons.count()
 
 
-def _submit_prompt(page: Page, prompt_text: str):
-    """Type and submit a video generation prompt."""
+def _submit_prompt(
+    page: Page,
+    prompt_text: str,
+    char_keys: list[str] | None = None,
+    uploaded: dict[str, bool] | None = None,
+):
+    """Attach ingredients (if any) and submit a video generation prompt."""
+    # Attach character ingredients before typing the prompt
+    if char_keys and uploaded:
+        _attach_ingredients(page, char_keys, uploaded)
+
     # Find and fill the prompt textbox
     textbox = page.get_by_role("textbox").filter(has_text="O que você quer criar?")
     if not textbox.count():
@@ -296,18 +421,20 @@ def generate_videos(
         _configure_video_portrait(page)
 
         # Upload character images if provided
+        uploaded: dict[str, bool] = {}
         if image_paths:
             print(f"    [INFO] Enviando {len(image_paths)} imagens de personagens...")
-            _upload_character_images(page, image_paths)
+            uploaded = _upload_character_images(page, image_paths)
 
         # Submit each prompt and download
         for prompt_info in prompts:
             num = prompt_info["number"]
             prompt_text = prompt_info["prompt"]
-            print(f"    [INFO] Prompt {num:03d} ({prompt_info['time_range']})...")
+            scene_chars = _parse_scene_characters(prompt_info["characters"])
+            print(f"    [INFO] Prompt {num:03d} ({prompt_info['time_range']}) chars={scene_chars}...")
 
             prev_count = _count_completed_videos(page)
-            _submit_prompt(page, prompt_text)
+            _submit_prompt(page, prompt_text, char_keys=scene_chars, uploaded=uploaded)
 
             if _wait_for_generation(page, prev_count):
                 video_path = output_dir / f"scene_{num:03d}.mp4"
@@ -380,18 +507,20 @@ def generate_videos_persistent(
         _configure_video_portrait(page)
 
         # Upload character images if provided
+        uploaded: dict[str, bool] = {}
         if image_paths:
             print(f"    [INFO] Enviando {len(image_paths)} imagens de personagens...")
-            _upload_character_images(page, image_paths)
+            uploaded = _upload_character_images(page, image_paths)
 
         # Submit each prompt and download
         for prompt_info in prompts:
             num = prompt_info["number"]
             prompt_text = prompt_info["prompt"]
-            print(f"    [INFO] Prompt {num:03d} ({prompt_info['time_range']})...")
+            scene_chars = _parse_scene_characters(prompt_info["characters"])
+            print(f"    [INFO] Prompt {num:03d} ({prompt_info['time_range']}) chars={scene_chars}...")
 
             prev_count = _count_completed_videos(page)
-            _submit_prompt(page, prompt_text)
+            _submit_prompt(page, prompt_text, char_keys=scene_chars, uploaded=uploaded)
 
             if _wait_for_generation(page, prev_count):
                 video_path = output_dir / f"scene_{num:03d}.mp4"
