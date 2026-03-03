@@ -9,13 +9,14 @@ from auto_reels.youtube.api import search_recent_videos, get_video_details
 from auto_reels.youtube.shorts import filter_shorts, rank_and_select
 from auto_reels.transcription.service import transcribe
 from auto_reels.narration.elevenlabs import generate_speech
-from auto_reels.gemini.agent import extract_characters
+from auto_reels.gemini.agent import extract_characters, send_sync_prompts
 from auto_reels.image_gen.webhook import generate_character_images
+from auto_reels.sync.dotti import generate_sync
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
     get_task_dir, clean_text,
 )
-from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY
+from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
 
 app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens + imagens")
 console = Console()
@@ -28,6 +29,7 @@ def run(
     narrate: bool = typer.Option(True, help="Gerar narração via ai33.pro"),
     characters: bool = typer.Option(True, help="Extrair personagens via Gemini"),
     images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
+    sync: bool = typer.Option(True, help="Gerar sincronização Dotti Sync a partir da narração"),
 ):
     """Busca shorts recentes, seleciona os mais vistos, transcreve, narra, extrai personagens e gera imagens."""
     channels = load_channels()
@@ -92,11 +94,28 @@ def run(
         elif narrate and not AI33_API_KEY:
             console.print(f"  [yellow]AI33_API_KEY não configurada, pulando narração.[/yellow]")
 
+        # Dotti Sync
+        if sync and narrate and DOTTI_SYNC_URL:
+            narration_file = get_narration_path(i)
+            if narration_file.exists():
+                console.print(f"  Gerando sincronização Dotti Sync...")
+                sync_path = get_task_dir(i) / "sync.txt"
+                sync_result = generate_sync(narration_file, sync_path)
+                if sync_result:
+                    console.print(f"  [green]Sync salvo em {sync_result}[/green]")
+                else:
+                    console.print(f"  [red]Falha ao gerar sync.[/red]")
+            else:
+                console.print(f"  [yellow]Narração não encontrada, pulando sync.[/yellow]")
+        elif sync and not DOTTI_SYNC_URL:
+            console.print(f"  [yellow]DOTTI_SYNC_URL não configurada, pulando sync.[/yellow]")
+
         # Extração de personagens
         chars = None
+        gemini_history = []
         if characters and GEMINI_API_KEY:
             console.print(f"  Extraindo personagens via Gemini...")
-            chars = extract_characters(clean_text(text))
+            chars, gemini_history = extract_characters(clean_text(text))
             if chars:
                 char_path = save_characters(i, chars)
                 console.print(f"  [green]Personagens salvos em {char_path}[/green]")
@@ -114,6 +133,20 @@ def run(
             console.print(f"  [green]{len(generated)} imagens geradas em {img_dir}[/green]")
         elif images and not WEBHOOK_API_KEY:
             console.print(f"  [yellow]WEBHOOK_API_KEY não configurada, pulando imagens.[/yellow]")
+
+        # Enviar sync de volta ao agente Gemini
+        if sync and gemini_history:
+            sync_file = get_task_dir(i) / "sync.txt"
+            if sync_file.exists():
+                console.print(f"  Enviando prompts de sync ao agente Gemini...")
+                sync_content = sync_file.read_text(encoding="utf-8")
+                veo_prompts = send_sync_prompts(gemini_history, sync_content)
+                if veo_prompts:
+                    veo_path = get_task_dir(i) / "veo_prompts.txt"
+                    veo_path.write_text(veo_prompts, encoding="utf-8")
+                    console.print(f"  [green]Prompts Veo salvos em {veo_path}[/green]")
+                else:
+                    console.print(f"  [red]Falha ao gerar prompts Veo.[/red]")
 
         console.print()
 

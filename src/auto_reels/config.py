@@ -27,6 +27,8 @@ GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")
 WEBHOOK_API_URL: str = os.environ.get("WEBHOOK_API_URL", "http://127.0.0.1:8765")
 WEBHOOK_API_KEY: str = os.environ.get("WEBHOOK_API_KEY", "")
 
+DOTTI_SYNC_URL: str = os.environ.get("DOTTI_SYNC_URL", "")
+
 SEARCH_DAYS = 7
 TOP_N = 2
 MAX_SHORT_DURATION_SECONDS = 180
