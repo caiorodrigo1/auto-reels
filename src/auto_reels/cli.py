@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -143,9 +145,17 @@ def run(
                 sync_content = sync_file.read_text(encoding="utf-8")
                 veo_prompts = send_sync_prompts(gemini_history, sync_content)
                 if veo_prompts:
+                    # Extract only the prompt text, one per line
+                    clean_prompts = re.findall(
+                        r"PROMPT\s+\d+\s+\[[^\]]*\]\s*\|\s*[\d:]+\s*-\s*[\d:]+\s*:(.*)",
+                        veo_prompts,
+                    )
                     veo_path = get_task_dir(i) / "veo_prompts.txt"
-                    veo_path.write_text(veo_prompts, encoding="utf-8")
-                    console.print(f"  [green]Prompts Veo salvos em {veo_path}[/green]")
+                    veo_path.write_text(
+                        "\n".join(p.strip() for p in clean_prompts),
+                        encoding="utf-8",
+                    )
+                    console.print(f"  [green]{len(clean_prompts)} prompts Veo salvos em {veo_path}[/green]")
                 else:
                     console.print(f"  [red]Falha ao gerar prompts Veo.[/red]")
 
