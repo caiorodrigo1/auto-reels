@@ -15,36 +15,17 @@ def compose_final_video(
     video_dir: Path,
     narration_path: Path,
     output_path: Path,
-    num_scenes: int = 24,
     volume_db: int = -20,
 ) -> Path:
     """Compose final video by concatenating scenes, lowering audio, and mixing narration."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Build scene list, repeating previous scene for missing ones
-    scenes: list[Path] = []
-    last_valid: Path | None = None
-    missing = []
-
-    for i in range(1, num_scenes + 1):
-        scene_path = video_dir / f"scene_{i:03d}.mp4"
-        if scene_path.exists():
-            scenes.append(scene_path)
-            last_valid = scene_path
-        elif last_valid is not None:
-            scenes.append(last_valid)
-            missing.append(i)
-        else:
-            # No previous scene yet — skip (shouldn't happen if scene_001 exists)
-            console.print(f"[yellow]Cena {i} faltando e sem cena anterior disponível, pulando.[/yellow]")
-            continue
+    # Collect all mp4 files sorted by name (numeric prefix ensures correct order)
+    scenes = sorted(video_dir.glob("*.mp4"))
 
     if not scenes:
         console.print("[red]Nenhuma cena encontrada.[/red]")
         return output_path
-
-    for m in missing:
-        console.print(f"[yellow]Cena {m:03d} faltando — repetindo cena anterior.[/yellow]")
 
     console.print(f"[bold]Compondo {len(scenes)} cenas + narração...[/bold]")
 

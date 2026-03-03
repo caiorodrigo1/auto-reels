@@ -12,13 +12,12 @@ from auto_reels.narration.elevenlabs import generate_speech
 from auto_reels.gemini.agent import extract_characters, send_sync_prompts
 from auto_reels.image_gen.webhook import generate_character_images
 from auto_reels.sync.dotti import generate_sync
-from auto_reels.video_gen.flow import generate_videos_persistent
 from auto_reels.editing.compose import compose_final_video
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
     get_task_dir, clean_text,
 )
-from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
+from auto_reels.config import SEARCH_DAYS, TOP_N, OUTPUT_DIR, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
 
 app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens + imagens")
 console = Console()
@@ -32,8 +31,6 @@ def run(
     characters: bool = typer.Option(True, help="Extrair personagens via Gemini"),
     images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
     sync: bool = typer.Option(True, help="Gerar sincronização Dotti Sync a partir da narração"),
-    videos: bool = typer.Option(False, help="Gerar vídeos via Google Flow (requer login no navegador)"),
-    edit: bool = typer.Option(False, help="Compor vídeo final (concat + narração com ffmpeg)"),
 ):
     """Busca shorts recentes, seleciona os mais vistos, transcreve, narra, extrai personagens e gera imagens."""
     channels = load_channels()
@@ -152,32 +149,54 @@ def run(
                 else:
                     console.print(f"  [red]Falha ao gerar prompts Veo.[/red]")
 
-        # Geração de vídeos via Google Flow
-        if videos:
-            veo_file = get_task_dir(i) / "veo_prompts.txt"
-            if veo_file.exists():
-                console.print(f"  Gerando vídeos via Google Flow...")
-                video_dir = get_task_dir(i) / "videos"
-                img_dir = get_task_dir(i) / "images"
-                char_images = list(img_dir.glob("*.png")) if img_dir.exists() else []
-                generated_videos = generate_videos_persistent(
-                    veo_file, video_dir, image_paths=char_images or None,
-                )
-                console.print(f"  [green]{len(generated_videos)} vídeos gerados em {video_dir}[/green]")
-            else:
-                console.print(f"  [yellow]veo_prompts.txt não encontrado, pulando vídeos.[/yellow]")
-
-        # Composição do vídeo final
-        if edit:
-            video_dir = get_task_dir(i) / "videos"
-            narration_file = get_narration_path(i)
-            if video_dir.exists() and narration_file.exists():
-                console.print(f"  Compondo vídeo final...")
-                final_path = get_task_dir(i) / "final.mp4"
-                compose_final_video(video_dir, narration_file, final_path)
-            else:
-                console.print(f"  [yellow]Vídeos ou narração não encontrados, pulando composição.[/yellow]")
-
         console.print()
 
     console.print("[bold green]Concluído![/bold green]")
+
+
+@app.command()
+def render(
+    task: str = typer.Option("", help="Caminho da task (ex: output/2026-03-03/task-01). Sem valor, renderiza todas as tasks de hoje pendentes."),
+):
+    """Compõe o vídeo final a partir dos clipes em videos/ + narração."""
+    from datetime import datetime, timezone
+
+    if task:
+        task_dirs = [Path(task)]
+    else:
+        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today_dir = OUTPUT_DIR / today
+        if not today_dir.exists():
+            console.print(f"[yellow]Nenhuma pasta encontrada para hoje ({today}).[/yellow]")
+            raise typer.Exit(0)
+        task_dirs = sorted(today_dir.iterdir())
+
+    rendered = 0
+    for task_dir in task_dirs:
+        if not task_dir.is_dir():
+            continue
+
+        video_dir = task_dir / "videos"
+        narration_file = task_dir / "narration.mp3"
+        final_path = task_dir / "final.mp4"
+
+        if final_path.exists():
+            console.print(f"[dim]{task_dir.name}: final.mp4 já existe, pulando.[/dim]")
+            continue
+
+        if not video_dir.exists() or not list(video_dir.glob("*.mp4")):
+            console.print(f"[dim]{task_dir.name}: sem clipes em videos/, pulando.[/dim]")
+            continue
+
+        if not narration_file.exists():
+            console.print(f"[yellow]{task_dir.name}: narration.mp3 não encontrada, pulando.[/yellow]")
+            continue
+
+        console.print(f"[bold]{task_dir.name}:[/bold] Compondo vídeo final...")
+        compose_final_video(video_dir, narration_file, final_path)
+        rendered += 1
+
+    if rendered:
+        console.print(f"\n[bold green]{rendered} vídeo(s) renderizado(s)![/bold green]")
+    else:
+        console.print("\n[yellow]Nenhuma task pendente para renderizar.[/yellow]")
