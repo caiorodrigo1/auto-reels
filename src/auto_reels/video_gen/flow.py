@@ -36,6 +36,15 @@ def parse_veo_prompts(text: str) -> list[dict]:
 
 def _ensure_authenticated(page: Page):
     """Handle Flow landing page and Google login if needed."""
+    page.wait_for_timeout(3_000)
+
+    # If redirected to Google login
+    if "accounts.google.com" in page.url:
+        print("    [AUTH] Login necessário. Faça login no navegador que abriu...")
+        print("    [AUTH] Aguardando autenticação (timeout: 5 min)...")
+        page.wait_for_url("**/fx**", timeout=300_000)
+        page.wait_for_timeout(3_000)
+
     # If we're on the marketing/landing page (not logged in), click "Create with Flow"
     create_btn = page.get_by_role("button", name="Create with Flow")
     if create_btn.count() > 0:
@@ -43,25 +52,56 @@ def _ensure_authenticated(page: Page):
         create_btn.click()
         page.wait_for_timeout(3_000)
 
-    # If redirected to Google login
+    # If redirected again to Google login after clicking
     if "accounts.google.com" in page.url:
         print("    [AUTH] Login necessário. Faça login no navegador que abriu...")
-        print("    [AUTH] Aguardando autenticação (timeout: 5 min)...")
-        page.wait_for_url("**/tools/flow**", timeout=300_000)
+        page.wait_for_url("**/fx**", timeout=300_000)
         page.wait_for_timeout(3_000)
 
-    # If we're on a loading screen, wait for it
-    page.wait_for_timeout(2_000)
+    # Dismiss terms/consent dialog if present ("Concordo" / "I agree")
+    agree_btn = page.get_by_role("button", name=re.compile(r"Concordo|I agree|Agree", re.IGNORECASE))
+    if agree_btn.count() > 0:
+        print("    [AUTH] Aceitando termos de uso...")
+        agree_btn.first.click()
+        page.wait_for_timeout(2_000)
+
+    # If we ended up on the main page instead of tools/flow, navigate there
+    if "/tools/flow" not in page.url:
+        print("    [AUTH] Redirecionando para Flow dashboard...")
+        page.goto(FLOW_URL, wait_until="networkidle", timeout=60_000)
+        page.wait_for_timeout(3_000)
+
+    # Handle any remaining auth redirect
+    if "accounts.google.com" in page.url:
+        print("    [AUTH] Aguardando autenticação final...")
+        page.wait_for_url("**/fx**", timeout=300_000)
+        page.wait_for_timeout(3_000)
+        if "/tools/flow" not in page.url:
+            page.goto(FLOW_URL, wait_until="networkidle", timeout=60_000)
+            page.wait_for_timeout(2_000)
+
+
+def _dismiss_dialogs(page: Page):
+    """Dismiss any consent/terms dialogs."""
+    agree_btn = page.get_by_role("button", name=re.compile(r"Concordo|I agree|Agree", re.IGNORECASE))
+    if agree_btn.count() > 0 and agree_btn.first.is_visible():
+        print("    [AUTH] Aceitando termos de uso...")
+        agree_btn.first.click()
+        page.wait_for_timeout(2_000)
 
 
 def _wait_for_dashboard(page: Page, timeout: int = 60_000):
     """Wait for the Flow dashboard to load."""
-    page.get_by_text("Novo projeto").first.wait_for(state="visible", timeout=timeout)
+    _dismiss_dialogs(page)
+    new_proj = page.get_by_role("button", name=re.compile(r"Novo projeto|New project", re.IGNORECASE))
+    new_proj.first.wait_for(state="visible", timeout=timeout)
 
 
 def _create_project(page: Page) -> str:
     """Create a new Flow project and return the project URL."""
-    page.get_by_role("button", name="Novo projeto").click()
+    _dismiss_dialogs(page)
+    new_proj = page.get_by_role("button", name=re.compile(r"Novo projeto|New project", re.IGNORECASE))
+    new_proj.first.click()
     # Wait for editor to load (prompt textbox appears)
     page.get_by_text("O que você quer criar?").first.wait_for(
         state="visible", timeout=15_000
@@ -69,8 +109,12 @@ def _create_project(page: Page) -> str:
     return page.url
 
 
-def _configure_video_portrait(page: Page):
-    """Configure model settings: Video, Ingredients, Portrait 9:16, x1."""
+def _configure_video_portrait(page: Page, model: str = "Veo 3"):
+    """Configure model settings: Video, Ingredients, Portrait 9:16, x1, and model.
+
+    Args:
+        model: Model name to select (e.g. "Veo 3", "Veo 3.1"). Defaults to "Veo 3".
+    """
     page.wait_for_timeout(2_000)
 
     # Click the model selector button — it contains "x1", "x2" etc and a media type
@@ -105,6 +149,38 @@ def _configure_video_portrait(page: Page):
         x1_tab.first.click()
         page.wait_for_timeout(300)
 
+    # Select model from the model dropdown (e.g. "Veo 3.1 - Fast" → "Veo 3")
+    model_dropdown = page.locator("button").filter(has_text=re.compile(r"Veo \d"))
+    if model_dropdown.count() > 0:
+        current_model = model_dropdown.first.inner_text().strip().split("\n")[0].strip()
+        print(f"    [CONFIG] Modelo atual: {current_model}")
+        # Always open dropdown to select the exact model
+        model_dropdown.first.click()
+        page.wait_for_timeout(1_000)
+
+        # Look for menu items and find the best match
+        menu_items = page.get_by_role("menuitem")
+        selected = False
+        for i in range(menu_items.count()):
+            item_text = menu_items.nth(i).inner_text().strip()
+            if model.lower() in item_text.lower():
+                menu_items.nth(i).click()
+                page.wait_for_timeout(500)
+                # Get clean name (remove icon text)
+                clean_name = "\n".join(
+                    l for l in item_text.split("\n") if "Veo" in l
+                ) or item_text
+                print(f"    [CONFIG] Modelo selecionado: {clean_name}")
+                selected = True
+                break
+
+        if not selected:
+            print(f"    [WARN] Modelo '{model}' não encontrado, opções disponíveis:")
+            for i in range(menu_items.count()):
+                print(f"      - {menu_items.nth(i).inner_text().strip()}")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(300)
+
     # Close menu by pressing Escape
     page.keyboard.press("Escape")
     page.wait_for_timeout(300)
@@ -132,16 +208,33 @@ def _upload_character_images(page: Page, image_paths: list[Path]) -> dict[str, b
             print(f"    [WARN] Não foi possível extrair char key de: {img_path.name}")
             continue
 
-        # Click "Adicionar mídia"
-        page.get_by_role("button", name="Adicionar mídia").click()
-        page.wait_for_timeout(500)
+        # Try to find a hidden file input and use it directly
+        file_input = page.locator("input[type='file']")
+        if file_input.count() > 0:
+            file_input.first.set_input_files(str(img_path))
+        else:
+            # Click "Adicionar mídia" / "Add media"
+            add_media = page.get_by_role("button", name=re.compile(r"Adicionar mídia|Add media", re.IGNORECASE))
+            if not add_media.count():
+                add_media = page.locator("button").filter(has_text=re.compile(r"add|adicionar", re.IGNORECASE))
+            add_media.first.click()
+            page.wait_for_timeout(1_000)
 
-        # Click "Faça upload de uma imagem"
-        with page.expect_file_chooser(timeout=5_000) as fc_info:
-            page.get_by_role("menuitem", name=re.compile(r"upload.*imagem", re.IGNORECASE)).click()
+            # Click upload option from menu
+            menu_items = page.get_by_role("menuitem")
+            upload_item = None
+            for mi in range(menu_items.count()):
+                txt = menu_items.nth(mi).inner_text().lower()
+                if ("image" in txt or "imagem" in txt) and "video" not in txt:
+                    upload_item = menu_items.nth(mi)
+                    break
+            if not upload_item:
+                upload_item = menu_items.first
 
-        file_chooser = fc_info.value
-        file_chooser.set_files(str(img_path))
+            with page.expect_file_chooser(timeout=10_000) as fc_info:
+                upload_item.click()
+            file_chooser = fc_info.value
+            file_chooser.set_files(str(img_path))
 
         # Count content grid links/items before upload (not UI icons)
         # Flow project grid items are links with role="link"
@@ -379,6 +472,7 @@ def generate_videos(
     output_dir: Path,
     image_paths: list[Path] | None = None,
     headless: bool = False,
+    model: str = "Veo 3",
 ) -> list[Path]:
     """Generate videos from Veo prompts using Google Flow via Playwright.
 
@@ -387,6 +481,7 @@ def generate_videos(
         output_dir: Directory to save generated video files
         image_paths: Optional list of character reference image paths
         headless: Run browser in headless mode (requires existing auth)
+        model: Veo model to use (e.g. "Veo 3", "Veo 3.1")
 
     Returns:
         List of paths to downloaded video files
@@ -417,8 +512,8 @@ def generate_videos(
         _create_project(page)
 
         # Configure video settings
-        print("    [INFO] Configurando: Vídeo, Retrato 9:16, x1...")
-        _configure_video_portrait(page)
+        print(f"    [INFO] Configurando: Vídeo, Ingredients, Retrato 9:16, x1, {model}...")
+        _configure_video_portrait(page, model=model)
 
         # Upload character images if provided
         uploaded: dict[str, bool] = {}
@@ -457,6 +552,7 @@ def generate_videos_persistent(
     output_dir: Path,
     image_paths: list[Path] | None = None,
     user_data_dir: str | None = None,
+    model: str = "Veo 3",
 ) -> list[Path]:
     """Generate videos using a persistent browser context (preserves Google login).
 
@@ -465,6 +561,7 @@ def generate_videos_persistent(
         output_dir: Directory to save generated video files
         image_paths: Optional list of character reference image paths
         user_data_dir: Path to Chrome user data directory for persistent auth
+        model: Veo model to use (e.g. "Veo 3", "Veo 3.1")
 
     Returns:
         List of paths to downloaded video files
@@ -491,20 +588,24 @@ def generate_videos_persistent(
         )
         page = context.pages[0] if context.pages else context.new_page()
 
-        # Navigate to Flow
-        page.goto(FLOW_URL, wait_until="networkidle", timeout=60_000)
+        # Navigate to Flow (use commit to avoid hanging on OAuth redirects)
+        try:
+            page.goto(FLOW_URL, wait_until="commit", timeout=30_000)
+        except Exception:
+            pass
+        page.wait_for_timeout(5_000)
 
         # Handle auth if needed
         _ensure_authenticated(page)
-        _wait_for_dashboard(page)
+        _wait_for_dashboard(page, timeout=120_000)
 
         # Create new project
         print("    [INFO] Criando novo projeto no Flow...")
         _create_project(page)
 
         # Configure video settings
-        print("    [INFO] Configurando: Vídeo, Retrato 9:16, x1...")
-        _configure_video_portrait(page)
+        print(f"    [INFO] Configurando: Vídeo, Ingredients, Retrato 9:16, x1, {model}...")
+        _configure_video_portrait(page, model=model)
 
         # Upload character images if provided
         uploaded: dict[str, bool] = {}
