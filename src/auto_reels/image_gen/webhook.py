@@ -23,9 +23,8 @@ def generate_character_images(characters_text: str, output_dir: Path) -> list[Pa
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
 
-    for label, prompt in prompts:
-        safe_name = re.sub(r"[^a-zA-Z0-9]", "_", label.lower()).strip("_")
-        output_path = output_dir / f"{safe_name}.png"
+    for i, (label, prompt) in enumerate(prompts, 1):
+        output_path = output_dir / f"char{i}.png"
         print(f"    [INFO] Gerando: {label}")
 
         path = _generate_single(prompt, output_path)

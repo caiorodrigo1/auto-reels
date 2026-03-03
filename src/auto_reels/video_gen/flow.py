@@ -208,6 +208,9 @@ def _upload_character_images(page: Page, image_paths: list[Path]) -> dict[str, b
             print(f"    [WARN] Não foi possível extrair char key de: {img_path.name}")
             continue
 
+        # Count content grid links/items BEFORE upload starts
+        grid_links_before = page.get_by_role("link").filter(has=page.locator("img")).count()
+
         # Try to find a hidden file input and use it directly
         file_input = page.locator("input[type='file']")
         if file_input.count() > 0:
@@ -235,10 +238,6 @@ def _upload_character_images(page: Page, image_paths: list[Path]) -> dict[str, b
                 upload_item.click()
             file_chooser = fc_info.value
             file_chooser.set_files(str(img_path))
-
-        # Count content grid links/items before upload (not UI icons)
-        # Flow project grid items are links with role="link"
-        grid_links_before = page.get_by_role("link").filter(has=page.locator("img")).count()
 
         # Wait for upload result
         upload_ok = False
@@ -327,21 +326,20 @@ def _attach_ingredients(page: Page, char_keys: list[str], uploaded: dict[str, bo
             page.wait_for_timeout(500)
             continue
 
-        # The current project images should be visible (we uploaded them)
-        # Find clickable image items in the picker (try multiple selectors)
+        # Search for the specific character image by name (e.g. "char1")
+        search_box.click()
+        search_box.fill(char_key.lower())
+        page.wait_for_timeout(1_000)
+
+        # Find clickable image items in the filtered results
         items = page.locator("[role='dialog'] img, [role='listbox'] img")
         if items.count() == 0:
             items = page.locator("img[alt='Untitled']")
         if items.count() == 0:
-            # Broader fallback: any img inside the picker area
             items = page.locator("[class*='picker'] img, [class*='resource'] img")
 
-        # Calculate index based on upload order
-        uploaded_keys = sorted([k for k, v in uploaded.items() if v])
-        idx = uploaded_keys.index(char_key) if char_key in uploaded_keys else 0
-
-        if items.count() > idx:
-            items.nth(idx).click()
+        if items.count() > 0:
+            items.first.click()
             page.wait_for_timeout(500)
             print(f"    [OK] Ingredient {char_key} anexado ao prompt")
         else:

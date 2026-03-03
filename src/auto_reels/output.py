@@ -13,6 +13,7 @@ def clean_text(text: str) -> str:
     text = html.unescape(text)
     text = re.sub(r"<[^>]+>", "", text)
     text = re.sub(r">{1,}", "", text)
+    text = re.sub(r"\[[^\]]*\]", "", text)
     text = re.sub(r"\s{2,}", " ", text)
     lines = [line.strip() for line in text.splitlines()]
     return "\n".join(line for line in lines if line)
