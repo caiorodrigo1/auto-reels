@@ -437,12 +437,12 @@ def _wait_for_generation(
 
 
 def _download_video(page: Page, output_path: Path) -> Path | None:
-    """Click on the latest video, download at 720p, and save to output_path."""
-    # Click the latest video thumbnail link
-    thumbnail_link = page.get_by_role("link", name="Miniatura do vídeo").last
+    """Click on the newest video, download at 720p, and save to output_path."""
+    # Click the newest video thumbnail (Flow shows newest first in the grid)
+    thumbnail_link = page.get_by_role("link", name="Miniatura do vídeo").first
     if not thumbnail_link.count():
         # Fallback: click on any thumbnail image inside a link
-        thumbnail_link = page.locator("a").filter(has=page.locator("img")).last
+        thumbnail_link = page.locator("a").filter(has=page.locator("img")).first
     thumbnail_link.click()
 
     # Wait for edit page to load (download button appears)

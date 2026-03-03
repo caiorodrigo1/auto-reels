@@ -13,6 +13,7 @@ from auto_reels.gemini.agent import extract_characters, send_sync_prompts
 from auto_reels.image_gen.webhook import generate_character_images
 from auto_reels.sync.dotti import generate_sync
 from auto_reels.video_gen.flow import generate_videos_persistent
+from auto_reels.editing.compose import compose_final_video
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
     get_task_dir, clean_text,
@@ -32,6 +33,7 @@ def run(
     images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
     sync: bool = typer.Option(True, help="Gerar sincronização Dotti Sync a partir da narração"),
     videos: bool = typer.Option(False, help="Gerar vídeos via Google Flow (requer login no navegador)"),
+    edit: bool = typer.Option(False, help="Compor vídeo final (concat + narração com ffmpeg)"),
 ):
     """Busca shorts recentes, seleciona os mais vistos, transcreve, narra, extrai personagens e gera imagens."""
     channels = load_channels()
@@ -164,6 +166,17 @@ def run(
                 console.print(f"  [green]{len(generated_videos)} vídeos gerados em {video_dir}[/green]")
             else:
                 console.print(f"  [yellow]veo_prompts.txt não encontrado, pulando vídeos.[/yellow]")
+
+        # Composição do vídeo final
+        if edit:
+            video_dir = get_task_dir(i) / "videos"
+            narration_file = get_narration_path(i)
+            if video_dir.exists() and narration_file.exists():
+                console.print(f"  Compondo vídeo final...")
+                final_path = get_task_dir(i) / "final.mp4"
+                compose_final_video(video_dir, narration_file, final_path)
+            else:
+                console.print(f"  [yellow]Vídeos ou narração não encontrados, pulando composição.[/yellow]")
 
         console.print()
 
