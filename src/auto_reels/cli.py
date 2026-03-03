@@ -12,6 +12,7 @@ from auto_reels.narration.elevenlabs import generate_speech
 from auto_reels.gemini.agent import extract_characters, send_sync_prompts
 from auto_reels.image_gen.webhook import generate_character_images
 from auto_reels.sync.dotti import generate_sync
+from auto_reels.video_gen.flow import generate_videos_persistent
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
     get_task_dir, clean_text,
@@ -30,6 +31,7 @@ def run(
     characters: bool = typer.Option(True, help="Extrair personagens via Gemini"),
     images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
     sync: bool = typer.Option(True, help="Gerar sincronização Dotti Sync a partir da narração"),
+    videos: bool = typer.Option(False, help="Gerar vídeos via Google Flow (requer login no navegador)"),
 ):
     """Busca shorts recentes, seleciona os mais vistos, transcreve, narra, extrai personagens e gera imagens."""
     channels = load_channels()
@@ -147,6 +149,21 @@ def run(
                     console.print(f"  [green]Prompts Veo salvos em {veo_path}[/green]")
                 else:
                     console.print(f"  [red]Falha ao gerar prompts Veo.[/red]")
+
+        # Geração de vídeos via Google Flow
+        if videos:
+            veo_file = get_task_dir(i) / "veo_prompts.txt"
+            if veo_file.exists():
+                console.print(f"  Gerando vídeos via Google Flow...")
+                video_dir = get_task_dir(i) / "videos"
+                img_dir = get_task_dir(i) / "images"
+                char_images = list(img_dir.glob("*.png")) if img_dir.exists() else []
+                generated_videos = generate_videos_persistent(
+                    veo_file, video_dir, image_paths=char_images or None,
+                )
+                console.print(f"  [green]{len(generated_videos)} vídeos gerados em {video_dir}[/green]")
+            else:
+                console.print(f"  [yellow]veo_prompts.txt não encontrado, pulando vídeos.[/yellow]")
 
         console.print()
 
