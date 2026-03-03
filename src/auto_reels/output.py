@@ -39,6 +39,14 @@ def get_narration_path(task_number: int) -> Path:
     return task_dir / "narration.mp3"
 
 
+def get_task_dir(task_number: int) -> Path:
+    """Return the task directory path for today."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    task_dir = OUTPUT_DIR / today / f"task-{task_number:02d}"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    return task_dir
+
+
 def save_characters(task_number: int, text: str) -> Path:
     """Save extracted characters to output/YYYY-MM-DD/task-NN/characters.txt."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

@@ -10,10 +10,14 @@ from auto_reels.youtube.shorts import filter_shorts, rank_and_select
 from auto_reels.transcription.service import transcribe
 from auto_reels.narration.elevenlabs import generate_speech
 from auto_reels.gemini.agent import extract_characters
-from auto_reels.output import save_transcription, get_narration_path, save_characters, clean_text
-from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY
+from auto_reels.image_gen.webhook import generate_character_images
+from auto_reels.output import (
+    save_transcription, get_narration_path, save_characters,
+    get_task_dir, clean_text,
+)
+from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY
 
-app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens")
+app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens + imagens")
 console = Console()
 
 
@@ -22,9 +26,10 @@ def run(
     days: int = typer.Option(SEARCH_DAYS, help="Dias para buscar vídeos recentes"),
     top: int = typer.Option(TOP_N, help="Quantidade de shorts para transcrever"),
     narrate: bool = typer.Option(True, help="Gerar narração via ai33.pro"),
-    characters: bool = typer.Option(True, help="Extrair personagens via Claude web"),
+    characters: bool = typer.Option(True, help="Extrair personagens via Gemini"),
+    images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
 ):
-    """Busca shorts recentes, seleciona os mais vistos, transcreve, narra e extrai personagens."""
+    """Busca shorts recentes, seleciona os mais vistos, transcreve, narra, extrai personagens e gera imagens."""
     channels = load_channels()
     if not channels:
         console.print("[red]Nenhum canal configurado em channels.json[/red]")
@@ -88,6 +93,7 @@ def run(
             console.print(f"  [yellow]AI33_API_KEY não configurada, pulando narração.[/yellow]")
 
         # Extração de personagens
+        chars = None
         if characters and GEMINI_API_KEY:
             console.print(f"  Extraindo personagens via Gemini...")
             chars = extract_characters(clean_text(text))
@@ -98,6 +104,16 @@ def run(
                 console.print(f"  [red]Falha ao extrair personagens.[/red]")
         elif characters and not GEMINI_API_KEY:
             console.print(f"  [yellow]GEMINI_API_KEY não configurada, pulando personagens.[/yellow]")
+
+        # Geração de imagens
+        if images and chars and WEBHOOK_API_KEY:
+            console.print(f"  Gerando imagens dos personagens...")
+            task_dir = get_task_dir(i)
+            img_dir = task_dir / "images"
+            generated = generate_character_images(chars, img_dir)
+            console.print(f"  [green]{len(generated)} imagens geradas em {img_dir}[/green]")
+        elif images and not WEBHOOK_API_KEY:
+            console.print(f"  [yellow]WEBHOOK_API_KEY não configurada, pulando imagens.[/yellow]")
 
         console.print()
 
