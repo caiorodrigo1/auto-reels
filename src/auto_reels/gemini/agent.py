@@ -8,6 +8,21 @@ import httpx
 from auto_reels.config import GEMINI_API_KEY
 
 SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text(encoding="utf-8")
+
+_PT_WORDS = {"de", "que", "não", "para", "uma", "com", "ele", "ela", "mas", "isso", "está", "são", "foi", "muito", "também", "já", "mais", "quando", "só", "eu", "você", "como", "seu", "sua"}
+_ES_WORDS = {"que", "de", "no", "una", "con", "por", "pero", "esta", "como", "más", "muy", "también", "puede", "tiene", "hay", "fue", "cuando", "yo", "todo", "este", "ese", "donde", "están"}
+
+
+def _detect_nationality(text: str) -> str | None:
+    """Detect language from text and return nationality instruction."""
+    words = set(text.lower().split())
+    pt_score = len(words & _PT_WORDS)
+    es_score = len(words & _ES_WORDS)
+    if pt_score >= 5:
+        return "Brazilian"
+    if es_score >= 5:
+        return "Mexican"
+    return None
 MODEL = "gemini-2.5-flash"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
@@ -65,9 +80,16 @@ def extract_characters(transcription: str, confirm_msg: str = "sim") -> tuple[st
         print("    [DEBUG] GEMINI_API_KEY não configurada")
         return None, []
 
+    # Detect language and add nationality instruction
+    nationality = _detect_nationality(transcription)
+    message = transcription
+    if nationality:
+        message = f"INSTRUÇÃO: Os personagens devem ter características físicas de pessoas {nationality}s (tom de pele, traços faciais, etc).\n\n{transcription}"
+        print(f"    [INFO] Idioma detectado → personagens com características de {nationality}")
+
     # Step 1: Send transcription (triggers Etapa 1 analysis)
     print("    [INFO] Enviando roteiro ao Gemini...")
-    text1, history = _send([], transcription)
+    text1, history = _send([], message)
     print(f"    [INFO] Análise recebida ({len(text1)} chars)")
 
     # Step 2: Confirm to get reference prompts (triggers Etapa 2)
