@@ -13,7 +13,9 @@ BASE_URL = "https://api.ai33.pro"
 def generate_speech(text: str, output_path: Path) -> Path | None:
     """Convert text to speech via ai33.pro TTS API and save as MP3."""
     if not AI33_API_KEY:
+        print("    [DEBUG] AI33_API_KEY está vazia")
         return None
+    print(f"    [DEBUG] Enviando TTS: voice={AI33_VOICE_ID}, text_len={len(text)}")
 
     # 1. Submit TTS task
     url = f"{BASE_URL}/v1/text-to-speech/{AI33_VOICE_ID}"
@@ -28,9 +30,12 @@ def generate_speech(text: str, output_path: Path) -> Path | None:
     }
 
     try:
+        print(f"    [DEBUG] POST {url}")
         resp = httpx.post(url, params=params, headers=headers, json=payload, timeout=30)
+        print(f"    [DEBUG] Response status: {resp.status_code}")
         resp.raise_for_status()
         data = resp.json()
+        print(f"    [DEBUG] Response data: {str(data)[:200]}")
 
         if not data.get("success"):
             print(f"    [DEBUG] TTS submit failed: {data}")

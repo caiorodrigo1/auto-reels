@@ -87,13 +87,14 @@ def run(
 
         # Narração
         if narrate and AI33_API_KEY:
-            console.print(f"  Gerando narração...")
             narration_path = get_narration_path(i)
-            result = generate_speech(clean_text(text), narration_path)
+            cleaned = clean_text(text)
+            console.print(f"  Gerando narração... (texto: {len(cleaned)} chars, destino: {narration_path})")
+            result = generate_speech(cleaned, narration_path)
             if result:
                 console.print(f"  [green]Narração salva em {result}[/green]")
             else:
-                console.print(f"  [red]Falha ao gerar narração.[/red]")
+                console.print(f"  [red]Falha ao gerar narração. Verifique logs [DEBUG] acima.[/red]")
         elif narrate and not AI33_API_KEY:
             console.print(f"  [yellow]AI33_API_KEY não configurada, pulando narração.[/yellow]")
 
@@ -129,13 +130,18 @@ def run(
 
         # Geração de imagens
         if images and chars and WEBHOOK_API_KEY:
-            console.print(f"  Gerando imagens dos personagens...")
+            console.print(f"  Gerando imagens dos personagens... (chars len: {len(chars)} chars)")
             task_dir = get_task_dir(i)
             img_dir = task_dir / "images"
             generated = generate_character_images(chars, img_dir)
-            console.print(f"  [green]{len(generated)} imagens geradas em {img_dir}[/green]")
-        elif images and not WEBHOOK_API_KEY:
+            if generated:
+                console.print(f"  [green]{len(generated)} imagens geradas em {img_dir}[/green]")
+            else:
+                console.print(f"  [red]Nenhuma imagem gerada. Verifique logs [DEBUG] acima.[/red]")
+        elif images and chars and not WEBHOOK_API_KEY:
             console.print(f"  [yellow]WEBHOOK_API_KEY não configurada, pulando imagens.[/yellow]")
+        elif images and not chars:
+            console.print(f"  [yellow]Sem personagens extraídos, pulando geração de imagens.[/yellow]")
 
         # Enviar sync de volta ao agente Gemini
         if sync and gemini_history:

@@ -15,10 +15,14 @@ ASPECT_RATIO = "9:16"
 
 def generate_character_images(characters_text: str, output_dir: Path) -> list[Path]:
     """Parse character prompts from characters.txt and generate images."""
+    print(f"    [DEBUG] characters_text preview: {characters_text[:300]}...")
     prompts = _parse_reference_prompts(characters_text)
     if not prompts:
-        print("    [DEBUG] Nenhum prompt de referência encontrado")
+        print("    [DEBUG] Nenhum prompt de referência encontrado no texto")
+        print(f"    [DEBUG] Texto completo ({len(characters_text)} chars):")
+        print(characters_text[:500])
         return []
+    print(f"    [DEBUG] {len(prompts)} prompts encontrados: {[label for label, _ in prompts]}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
