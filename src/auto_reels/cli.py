@@ -17,7 +17,7 @@ from auto_reels.sync.dotti import generate_sync
 from auto_reels.editing.compose import compose_final_video
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
-    get_task_dir, clean_text,
+    get_task_dir, clean_text, load_seen, mark_seen,
 )
 from auto_reels.config import SEARCH_DAYS, TOP_N, OUTPUT_DIR, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
 
@@ -62,7 +62,16 @@ def run(
         console.print("\n[yellow]Nenhum short encontrado.[/yellow]")
         raise typer.Exit(0)
 
-    selected = rank_and_select(all_shorts, top_n=top)
+    seen = load_seen()
+    new_shorts = [s for s in all_shorts if s["video_id"] not in seen]
+    skipped = len(all_shorts) - len(new_shorts)
+    if skipped:
+        console.print(f"[dim]Ignorando {skipped} vídeo(s) já processados anteriormente.[/dim]")
+    if not new_shorts:
+        console.print("\n[yellow]Nenhum short novo encontrado.[/yellow]")
+        raise typer.Exit(0)
+
+    selected = rank_and_select(new_shorts, top_n=top)
 
     table = Table(title=f"\nTop {len(selected)} Shorts por Views")
     table.add_column("#", style="bold")
@@ -83,6 +92,7 @@ def run(
             continue
 
         path = save_transcription(i, text, video)
+        mark_seen(video["video_id"])
         console.print(f"  [green]Transcrição salva em {path}[/green]")
 
         # Narração

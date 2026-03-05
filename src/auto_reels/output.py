@@ -1,11 +1,28 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
-from auto_reels.config import OUTPUT_DIR
+from auto_reels.config import OUTPUT_DIR, PROJECT_ROOT
+
+SEEN_FILE = PROJECT_ROOT / "seen_videos.json"
+
+
+def load_seen() -> set[str]:
+    """Load set of already-processed video IDs."""
+    if SEEN_FILE.exists():
+        return set(json.loads(SEEN_FILE.read_text(encoding="utf-8")))
+    return set()
+
+
+def mark_seen(video_id: str) -> None:
+    """Add a video ID to the seen registry."""
+    seen = load_seen()
+    seen.add(video_id)
+    SEEN_FILE.write_text(json.dumps(sorted(seen), indent=2), encoding="utf-8")
 
 
 def clean_text(text: str) -> str:

@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where:*)",
+      "Bash(py:*)",
+      "Bash(winget:*)",
+      "Bash(export:*)",
+      "Bash(powershell.exe:*)"
+    ]
+  }
+}

@@ -9,12 +9,14 @@ console = Console()
 
 
 def filter_shorts(videos: list[dict]) -> list[dict]:
-    """Keep only videos with duration <= MAX_SHORT_DURATION_SECONDS."""
+    """Keep videos tagged #shorts OR within max duration."""
     shorts = []
     for video in videos:
         duration = isodate.parse_duration(video["duration"])
         secs = duration.total_seconds()
-        if secs <= MAX_SHORT_DURATION_SECONDS:
+        text = (video["title"] + " " + video.get("description", "")).lower()
+        has_hashtag = "#shorts" in text or "#short" in text
+        if has_hashtag or secs <= MAX_SHORT_DURATION_SECONDS:
             shorts.append(video)
         else:
             console.print(f"    [dim]Descartado ({secs:.0f}s): {video['title']}[/dim]")

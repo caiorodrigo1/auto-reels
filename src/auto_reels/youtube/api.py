@@ -65,6 +65,7 @@ def get_video_details(video_ids: list[str]) -> list[dict]:
                 {
                     "video_id": item["id"],
                     "title": item["snippet"]["title"],
+                    "description": item["snippet"].get("description", ""),
                     "channel_title": item["snippet"]["channelTitle"],
                     "duration": item["contentDetails"]["duration"],
                     "view_count": int(item["statistics"].get("viewCount", 0)),
