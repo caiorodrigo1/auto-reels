@@ -72,11 +72,11 @@ O Veo 3 frequentemente FALHA e REJEITA prompts com crianças. Para evitar proble
 
 | Idade no roteiro | O que fazer no prompt |
 |------------------|----------------------|
-| 0-12 anos | **AJUSTAR para 13+ anos** (teenager) se o roteiro permitir |
-| 13-17 anos | Pode usar, mas com cautela |
+| 0-17 anos | **AJUSTAR para 18 anos** (young adult) obrigatoriamente |
+
 | Qualquer menor | **NUNCA** em cenas violentas, perigosas, assustadoras ou sugestivas |
 
-**REGRA:** Sempre que possível, use **13 years old** como idade mínima nos prompts.
+**REGRA:** Sempre use **18 years old** como idade mínima nos prompts. Nunca gere personagens menores de 18 anos.
 
 ### REGRA SOBRE PESSOAS FAMOSAS (CRÍTICA):
 O Veo 3 **REJEITA** qualquer tentativa de gerar rostos de pessoas reais identificáveis.
@@ -101,9 +101,9 @@ O Veo 3 possui filtros de segurança em DUAS camadas: no prompt (entrada) e no v
 ### PROIBIDO ABSOLUTO (rejeição imediata):
 
 **REGRAS CRÍTICAS DE REJEIÇÃO:**
-- **MENORES DE 13 ANOS** — usar sempre 13+ como idade mínima
+- **MENORES DE 18 ANOS** — usar sempre 18 anos como idade mínima
 - **PESSOAS FAMOSAS** — nomes, rostos ou referências a celebridades, políticos, atletas, influenciadores
-- **MENORES (13-17) EM PERIGO** — nunca em cenas violentas, assustadoras ou sugestivas
+- **NUNCA** gere personagens com menos de 18 anos em qualquer cena
 
 **Outras violações:**
 - Violência gráfica explícita (decapitação, desmembramento, órgãos expostos)

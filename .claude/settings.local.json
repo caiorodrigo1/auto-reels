@@ -5,7 +5,9 @@
       "Bash(py:*)",
       "Bash(winget:*)",
       "Bash(export:*)",
-      "Bash(powershell.exe:*)"
+      "Bash(powershell.exe:*)",
+      "Bash(sed:*)",
+      "Bash(\"/c/Projects/auto-reels/run_scheduled.bat\":*)"
     ]
   }
 }

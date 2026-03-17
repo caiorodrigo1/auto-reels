@@ -11,13 +11,14 @@ from auto_reels.youtube.api import search_recent_videos, get_video_details
 from auto_reels.youtube.shorts import filter_shorts, rank_and_select
 from auto_reels.transcription.service import transcribe
 from auto_reels.narration.elevenlabs import generate_speech
-from auto_reels.gemini.agent import extract_characters, send_sync_prompts
+from auto_reels.gemini.agent import extract_characters, send_sync_prompts, translate_to_ptbr
+from auto_reels.gemini.agent import _detect_language
 from auto_reels.image_gen.webhook import generate_character_images
 from auto_reels.sync.dotti import generate_sync
 from auto_reels.editing.compose import compose_final_video
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
-    get_task_dir, clean_text, load_seen, mark_seen,
+    get_task_dir, get_next_task_number, clean_text, load_seen, mark_seen,
 )
 from auto_reels.config import SEARCH_DAYS, TOP_N, OUTPUT_DIR, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
 
@@ -84,12 +85,20 @@ def run(
 
     console.print("\n[bold]Transcrevendo...[/bold]\n")
 
-    for i, video in enumerate(selected, 1):
+    next_task = get_next_task_number()
+    for i, video in enumerate(selected, next_task):
         console.print(f"[bold]Task {i:02d}:[/bold] {video['title']}")
         text = transcribe(video["video_id"])
         if not text:
             console.print(f"  [red]Transcrição indisponível, pulando.[/red]\n")
             continue
+
+        # Tradução se o roteiro estiver em inglês
+        lang = _detect_language(text)
+        if lang == "en":
+            console.print(f"  [yellow]Roteiro em inglês detectado. Traduzindo para pt-BR...[/yellow]")
+            text = translate_to_ptbr(text)
+            console.print(f"  [green]Tradução concluída.[/green]")
 
         path = save_transcription(i, text, video)
         mark_seen(video["video_id"])

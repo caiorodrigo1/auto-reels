@@ -11,18 +11,47 @@ SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text(encoding
 
 _PT_WORDS = {"de", "que", "não", "para", "uma", "com", "ele", "ela", "mas", "isso", "está", "são", "foi", "muito", "também", "já", "mais", "quando", "só", "eu", "você", "como", "seu", "sua"}
 _ES_WORDS = {"que", "de", "no", "una", "con", "por", "pero", "esta", "como", "más", "muy", "también", "puede", "tiene", "hay", "fue", "cuando", "yo", "todo", "este", "ese", "donde", "están"}
+_EN_WORDS = {"the", "and", "that", "this", "with", "have", "from", "they", "will", "would", "could", "should", "about", "your", "when", "what", "there", "their", "which", "been", "were", "said", "also", "just", "like"}
+
+
+def _detect_language(text: str) -> str:
+    """Detect language from text. Returns 'pt', 'es', 'en', or 'unknown'."""
+    words = set(text.lower().split())
+    pt_score = len(words & _PT_WORDS)
+    es_score = len(words & _ES_WORDS)
+    en_score = len(words & _EN_WORDS)
+    if pt_score >= 5 and pt_score >= en_score:
+        return "pt"
+    if es_score >= 5 and es_score >= en_score:
+        return "es"
+    if en_score >= 5:
+        return "en"
+    return "unknown"
 
 
 def _detect_nationality(text: str) -> str | None:
     """Detect language from text and return nationality instruction."""
-    words = set(text.lower().split())
-    pt_score = len(words & _PT_WORDS)
-    es_score = len(words & _ES_WORDS)
-    if pt_score >= 5:
+    lang = _detect_language(text)
+    if lang == "pt":
         return "Brazilian"
-    if es_score >= 5:
+    if lang == "es":
         return "Mexican"
     return None
+
+
+def translate_to_ptbr(text: str) -> str:
+    """Translate text to Brazilian Portuguese via Gemini. Returns translated text."""
+    if not GEMINI_API_KEY:
+        print("    [DEBUG] GEMINI_API_KEY não configurada, impossível traduzir")
+        return text
+
+    print("    [INFO] Roteiro em inglês detectado. Traduzindo para pt-BR via Gemini...")
+    translated, _ = _send(
+        [],
+        f"Traduza o texto abaixo para o português brasileiro (pt-BR) de forma natural e fluída, mantendo o mesmo tom e estilo. Retorne APENAS o texto traduzido, sem explicações ou comentários.\n\n{text}",
+    )
+    print(f"    [INFO] Tradução concluída ({len(translated)} chars)")
+    return translated
 MODEL = "gemini-2.5-flash"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 

@@ -57,6 +57,27 @@ def get_narration_path(task_number: int) -> Path:
     return task_dir / "narration.mp3"
 
 
+def get_next_task_number() -> int:
+    """Return the next task number based on existing task dirs for today."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_dir = OUTPUT_DIR / today
+    if not today_dir.exists():
+        return 1
+    existing = [
+        d for d in today_dir.iterdir()
+        if d.is_dir() and d.name.startswith("task-")
+    ]
+    if not existing:
+        return 1
+    numbers = []
+    for d in existing:
+        try:
+            numbers.append(int(d.name.split("-")[1]))
+        except (IndexError, ValueError):
+            pass
+    return max(numbers) + 1 if numbers else 1
+
+
 def get_task_dir(task_number: int) -> Path:
     """Return the task directory path for today."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
