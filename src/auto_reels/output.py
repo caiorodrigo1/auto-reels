@@ -32,6 +32,14 @@ def save_transcription(task_number: int, text: str, video: dict) -> Path:
     return file_path
 
 
+def get_narration_en_path(task_number: int) -> Path:
+    """Return the path for the English narration audio file (used for Dotti Sync)."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    task_dir = OUTPUT_DIR / today / f"task-{task_number:02d}"
+    task_dir.mkdir(parents=True, exist_ok=True)
+    return task_dir / "narration_en.mp3"
+
+
 def get_narration_path(task_number: int) -> Path:
     """Return the path for the narration audio file."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

@@ -6,42 +6,101 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 import httpx
+from rich.console import Console
+from rich.progress import (
+    BarColumn,
+    MofNCompleteColumn,
+    Progress,
+    SpinnerColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
 from auto_reels.config import WEBHOOK_API_URL, WEBHOOK_API_KEY
 
 MODEL = "nano_banana_2"
 ASPECT_RATIO = "9:16"
 
+console = Console()
+
 
 def generate_character_images(characters_text: str, output_dir: Path) -> list[Path]:
     """Parse character prompts from characters.txt and generate images."""
     prompts = _parse_reference_prompts(characters_text)
     if not prompts:
-        print("    [DEBUG] Nenhum prompt de referência encontrado")
+        console.print("  [yellow]Nenhum prompt de referência encontrado[/yellow]")
         return []
 
     output_dir.mkdir(parents=True, exist_ok=True)
     results = []
 
-    for i, (label, prompt) in enumerate(prompts, 1):
-        output_path = output_dir / f"char{i}.png"
-        print(f"    [INFO] Gerando: {label}")
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("  [bold]{task.description}"),
+        BarColumn(bar_width=25),
+        MofNCompleteColumn(),
+        TextColumn("[dim]{task.fields[status]}[/dim]"),
+        TimeElapsedColumn(),
+        console=console,
+        transient=False,
+    ) as progress:
+        overall = progress.add_task(
+            "[cyan]Imagens[/cyan]",
+            total=len(prompts),
+            status=f"0/{len(prompts)} geradas",
+        )
+        char_task = progress.add_task(
+            "  [dim]aguardando...[/dim]",
+            total=None,
+            status="",
+        )
 
-        path = _generate_single(prompt, output_path)
-        if path:
-            results.append(path)
-            print(f"    [GREEN] Salvo em {path}")
-        else:
-            print(f"    [RED] Falha ao gerar {label}")
+        ok = 0
+        failed = 0
 
+        for i, (label, prompt) in enumerate(prompts, 1):
+            output_path = output_dir / f"char{i}.png"
+            progress.update(char_task, description=f"  [yellow]{label}[/yellow]", status="enviando...")
+
+            path = _generate_single(prompt, output_path, progress, char_task)
+            if path:
+                results.append(path)
+                ok += 1
+                progress.update(char_task, status="[green]concluído[/green]")
+            else:
+                failed += 1
+                progress.update(char_task, status="[red]falhou[/red]")
+
+            status_parts = [f"[green]{ok} ok[/green]"]
+            if failed:
+                status_parts.append(f"[red]{failed} falhou[/red]")
+            remaining = len(prompts) - ok - failed
+            if remaining:
+                status_parts.append(f"{remaining} restantes")
+            progress.update(overall, advance=1, status="  |  ".join(status_parts))
+
+        progress.update(char_task, visible=False)
+
+    console.print(
+        f"  [bold green]{len(results)}/{len(prompts)} imagens geradas[/bold green]"
+        + (f"  [red]({failed} falharam)[/red]" if failed else "")
+    )
     return results
 
 
-def _generate_single(prompt: str, output_path: Path) -> Path | None:
+def _generate_single(
+    prompt: str,
+    output_path: Path,
+    progress: Progress | None = None,
+    task_id_prog=None,
+) -> Path | None:
     """Submit image generation, poll, download."""
     if not WEBHOOK_API_KEY:
-        print("    [DEBUG] WEBHOOK_API_KEY não configurada")
         return None
+
+    def _upd(status: str):
+        if progress is not None and task_id_prog is not None:
+            progress.update(task_id_prog, status=status)
 
     base = WEBHOOK_API_URL.rstrip("/")
     headers = {
@@ -60,18 +119,17 @@ def _generate_single(prompt: str, output_path: Path) -> Path | None:
         resp.raise_for_status()
         data = resp.json()
         task_id = data["task_id"]
-        print(f"    [DEBUG] task_id: {task_id}")
     except Exception as e:
-        print(f"    [DEBUG] Submit error: {e}")
+        _upd(f"[red]erro: {e}[/red]")
         return None
 
     # 2. Poll
-    image_url = _poll_task(base, headers, task_id)
+    image_url = _poll_task(base, headers, task_id, progress=progress, task_id_prog=task_id_prog)
     if not image_url:
         return None
 
-    # 3. Download — rewrite URL to use configured base (API may return localhost)
-    #    and decode percent-encoded chars (server expects literal filenames)
+    # 3. Download
+    _upd("baixando...")
     image_url = unquote(image_url)
     parsed = urlparse(image_url)
     parsed_base = urlparse(base)
@@ -85,14 +143,25 @@ def _generate_single(prompt: str, output_path: Path) -> Path | None:
         output_path.write_bytes(img_resp.content)
         return output_path
     except Exception as e:
-        print(f"    [DEBUG] Download error: {e}")
+        _upd(f"[red]download erro: {e}[/red]")
         return None
 
 
-def _poll_task(base: str, headers: dict, task_id: str, max_wait: int = 300) -> str | None:
+def _poll_task(
+    base: str,
+    headers: dict,
+    task_id: str,
+    max_wait: int = 300,
+    progress: Progress | None = None,
+    task_id_prog=None,
+) -> str | None:
     """Poll /api/status/{task_id} until completed."""
     elapsed = 0
     interval = 5
+
+    def _upd(status: str):
+        if progress is not None and task_id_prog is not None:
+            progress.update(task_id_prog, status=status)
 
     while elapsed < max_wait:
         try:
@@ -105,30 +174,29 @@ def _poll_task(base: str, headers: dict, task_id: str, max_wait: int = 300) -> s
                 results = data.get("results", [])
                 if results:
                     return results[0]
-                print(f"    [DEBUG] Completed but no results: {data}")
+                _upd("[red]completed sem resultado[/red]")
                 return None
 
             if status == "failed":
-                print(f"    [DEBUG] Failed: {data.get('error', data.get('error_detail'))}")
+                _upd(f"[red]falhou[/red]")
                 return None
 
-            print(f"    [DEBUG] Status: {status}")
+            _upd(f"gerando... {elapsed}s")
             time.sleep(interval)
             elapsed += interval
 
         except Exception as e:
-            print(f"    [DEBUG] Poll error: {e}")
+            _upd(f"[yellow]poll error {elapsed}s[/yellow]")
             time.sleep(interval)
             elapsed += interval
 
-    print(f"    [DEBUG] Timeout after {max_wait}s")
+    _upd("[red]timeout[/red]")
     return None
 
 
 def _parse_reference_prompts(text: str) -> list[tuple[str, str]]:
     """Extract CHAR prompts from the reference section of characters.txt."""
     prompts = []
-    # Match lines like "CHAR1 — NOME:" or "CHAR1 — NOME:\n" followed by the prompt
     pattern = r"(CHAR\d+\s*[—–-]\s*[^:]+):\s*\n?(Full body portrait.+?)(?=\n\nCHAR|\n\n===|\Z)"
     for match in re.finditer(pattern, text, re.DOTALL):
         label = match.group(1).strip()

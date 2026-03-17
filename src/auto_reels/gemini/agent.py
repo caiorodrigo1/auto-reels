@@ -52,6 +52,9 @@ def _send(history: list[dict], message: str) -> tuple[str, list[dict]]:
             print(f"    [DEBUG] Gemini {resp.status_code}, aguardando {wait}s...")
             time.sleep(wait)
             continue
+        if resp.status_code == 400:
+            print(f"    [DEBUG] Gemini 400 (key inválida? ...{key[-6:]}): {resp.text[:200]}")
+            break
         resp.raise_for_status()
         break
     else:
@@ -82,6 +85,65 @@ def extract_characters(transcription: str, confirm_msg: str = "sim") -> tuple[st
     print(f"    [INFO] Prompts de referência recebidos ({len(text2)} chars)")
 
     return f"{text1}\n\n{text2}", history
+
+
+def _detect_language(text: str) -> str:
+    """Return 'en' if text appears to be English, else 'pt'."""
+    sample = text[:500]
+    english_words = {"the", "and", "is", "in", "it", "of", "to", "a", "that", "was", "for", "on", "are", "with", "he", "she", "they"}
+    words = set(w.lower().strip(".,!?") for w in sample.split())
+    matches = len(words & english_words)
+    return "en" if matches >= 3 else "pt"
+
+
+def translate_to_en(text: str) -> str:
+    """Translate text to English using Gemini."""
+    if not GEMINI_API_KEY:
+        return text
+
+    print("    [INFO] Traduzindo para inglês via Gemini...")
+    prompt = f"Translate the text below to English. Return only the translated text, no explanations:\n\n{text}"
+    return _translate(prompt, fallback=text)
+
+
+def translate_to_ptbr(text: str) -> str:
+    """Translate text to Brazilian Portuguese using Gemini."""
+    if not GEMINI_API_KEY:
+        return text
+
+    print("    [INFO] Traduzindo para pt-BR via Gemini...")
+    prompt = f"Traduza o texto abaixo para o português brasileiro. Retorne apenas o texto traduzido, sem explicações:\n\n{text}"
+    return _translate(prompt, fallback=text)
+
+
+def _translate(prompt: str, fallback: str = "") -> str:
+    body = {
+        "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+    }
+    resp = None
+    for attempt in range(8):
+        key = _next_key() if len(_keys) > 1 else _keys[0]
+        resp = httpx.post(API_URL, params={"key": key}, json=body, timeout=300)
+        if resp.status_code == 429:
+            wait = min(2 ** attempt * 10, 120) if len(_keys) == 1 else 2
+            time.sleep(wait)
+            continue
+        if resp.status_code >= 500:
+            time.sleep(min(2 ** attempt * 5, 60))
+            continue
+        if resp.status_code == 400:
+            return fallback
+        resp.raise_for_status()
+        break
+    else:
+        return fallback
+
+    try:
+        translated = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+        print(f"    [INFO] Tradução concluída ({len(translated)} chars)")
+        return translated
+    except Exception:
+        return fallback
 
 
 def send_sync_prompts(history: list, sync_text: str) -> str | None:

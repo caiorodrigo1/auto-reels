@@ -6,6 +6,8 @@ from pathlib import Path
 
 from rich.console import Console
 
+from auto_reels.editing.subtitles import sync_to_ass
+
 console = Console()
 
 FFMPEG = "ffmpeg"
@@ -17,6 +19,7 @@ def compose_final_video(
     output_path: Path,
     num_scenes: int = 24,
     volume_db: int = -30,
+    sync_path: Path | None = None,
 ) -> Path:
     """Compose final video by concatenating scenes, lowering audio, and mixing narration."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -53,18 +56,43 @@ def compose_final_video(
         lines = [f"file '{scene.resolve()}'" for scene in scenes]
         concat_file.write_text("\n".join(lines), encoding="utf-8")
 
+        # Generate ASS subtitles if sync available
+        ass_path: Path | None = None
+        if sync_path and sync_path.exists():
+            ass_path = Path(tmp) / "subtitles.ass"
+            result = sync_to_ass(sync_path, ass_path)
+            if result:
+                console.print("  [dim]Legendas geradas[/dim]")
+            else:
+                ass_path = None
+
+        # Build video filter
+        if ass_path:
+            ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
+            vf = f"ass='{ass_escaped}'"
+        else:
+            vf = None
+
+        audio_filter = (
+            f"[0:a]volume={volume_db}dB,aresample=48000[bg];"
+            f"[1:a]aresample=48000,apad[narr];"
+            f"[bg][narr]amix=inputs=2:duration=longest:normalize=0[aout]"
+        )
+
         cmd = [
             FFMPEG, "-y",
             "-f", "concat", "-safe", "0", "-i", str(concat_file),
             "-i", str(narration_path),
-            "-filter_complex",
-            f"[0:a]volume={volume_db}dB[bg];"
-            f"[1:a]aresample=48000,apad[narr];"
-            f"[bg][narr]amix=inputs=2:duration=first[aout]",
+            "-filter_complex", audio_filter,
             "-map", "0:v", "-map", "[aout]",
-            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
-            str(output_path),
         ]
+
+        if vf:
+            cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-crf", "18"]
+        else:
+            cmd += ["-c:v", "copy"]
+
+        cmd += ["-c:a", "aac", "-b:a", "192k", str(output_path)]
 
         console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
         result = subprocess.run(cmd, capture_output=True, text=True)
