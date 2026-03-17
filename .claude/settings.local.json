@@ -30,7 +30,10 @@
       "Bash(cmd /c \"taskkill /PID 24052 /T /F\" 2>&1)",
       "Bash(tasklist | grep -i python)",
       "Bash(taskkill /F /PID 24052)",
-      "Bash(cmd /c \"taskkill /F /PID 24052\")"
+      "Bash(cmd /c \"taskkill /F /PID 24052\")",
+      "Bash(PYTHONUTF8=1 auto-reels render 1)",
+      "Bash(ffprobe -v quiet -show_entries format=duration -of csv=p=0 \"C:\\\\Projects\\\\auto-reels\\\\output\\\\2026-03-17\\\\task-01\\\\narration.mp3\")",
+      "Bash(for f:*)"
     ]
   }
 }

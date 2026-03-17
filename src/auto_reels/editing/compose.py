@@ -1,16 +1,26 @@
 from __future__ import annotations
 
 import subprocess
-import tempfile
 from pathlib import Path
 
 from rich.console import Console
 
-from auto_reels.editing.subtitles import sync_to_ass
-
 console = Console()
 
 FFMPEG = "ffmpeg"
+FFPROBE = "ffprobe"
+
+
+def _get_duration(path: Path) -> float:
+    """Get media duration in seconds via ffprobe."""
+    result = subprocess.run(
+        [FFPROBE, "-v", "quiet", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True,
+    )
+    try:
+        return float(result.stdout.strip())
+    except ValueError:
+        return 0.0
 
 
 def compose_final_video(
@@ -18,10 +28,9 @@ def compose_final_video(
     narration_path: Path,
     output_path: Path,
     num_scenes: int = 24,
-    volume_db: int = -30,
     sync_path: Path | None = None,
 ) -> Path:
-    """Compose final video by concatenating scenes, lowering audio, and mixing narration."""
+    """Compose final video by concatenating scenes and adding narration."""
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Build scene list, repeating previous scene for missing ones
@@ -38,69 +47,74 @@ def compose_final_video(
             scenes.append(last_valid)
             missing.append(i)
         else:
-            # No previous scene yet — skip (shouldn't happen if scene_001 exists)
-            console.print(f"[yellow]Cena {i} faltando e sem cena anterior disponível, pulando.[/yellow]")
             continue
 
     if not scenes:
-        console.print("[red]Nenhuma cena encontrada.[/red]")
+        console.print("  [red]Nenhuma cena encontrada.[/red]")
         return output_path
 
     for m in missing:
-        console.print(f"[yellow]Cena {m:03d} faltando — repetindo cena anterior.[/yellow]")
+        console.print(f"  [yellow]Cena {m:03d} faltando — repetindo anterior.[/yellow]")
 
-    console.print(f"[bold]Compondo {len(scenes)} cenas + narração...[/bold]")
+    # Write concat file next to output (not in temp dir)
+    concat_file = output_path.parent / "concat.txt"
+    lines = [f"file '{scene.resolve()}'" for scene in scenes]
+    concat_file.write_text("\n".join(lines), encoding="utf-8")
 
-    with tempfile.TemporaryDirectory() as tmp:
-        concat_file = Path(tmp) / "concat.txt"
-        lines = [f"file '{scene.resolve()}'" for scene in scenes]
-        concat_file.write_text("\n".join(lines), encoding="utf-8")
+    # Get durations
+    narration_dur = _get_duration(narration_path)
+    video_dur = sum(_get_duration(s) for s in set(scenes))  # unique files only
+    # Adjust for repeated scenes
+    if len(set(scenes)) != len(scenes):
+        video_dur = sum(_get_duration(s) for s in scenes)
 
-        # Generate ASS subtitles if sync available
-        ass_path: Path | None = None
-        if sync_path and sync_path.exists():
-            ass_path = Path(tmp) / "subtitles.ass"
-            result = sync_to_ass(sync_path, ass_path)
-            if result:
-                console.print("  [dim]Legendas geradas[/dim]")
-            else:
-                ass_path = None
+    need_slowdown = narration_dur > 0 and video_dur > 0 and narration_dur > video_dur
+    factor = narration_dur / video_dur if need_slowdown else 1.0
 
-        # Build video filter
-        if ass_path:
-            ass_escaped = str(ass_path).replace("\\", "/").replace(":", "\\:")
-            vf = f"ass='{ass_escaped}'"
-        else:
-            vf = None
-
-        audio_filter = (
-            f"[0:a]volume={volume_db}dB,aresample=48000[bg];"
-            f"[1:a]aresample=48000,apad[narr];"
-            f"[bg][narr]amix=inputs=2:duration=longest:normalize=0[aout]"
-        )
-
+    if need_slowdown:
+        console.print(f"  [dim]narração={narration_dur:.0f}s  clipes={video_dur:.0f}s  slowdown={factor:.3f}x[/dim]")
         cmd = [
             FFMPEG, "-y",
             "-f", "concat", "-safe", "0", "-i", str(concat_file),
             "-i", str(narration_path),
-            "-filter_complex", audio_filter,
-            "-map", "0:v", "-map", "[aout]",
+            "-filter_complex",
+            f"[0:v]setpts=PTS*{factor:.6f}[v]",
+            "-map", "[v]", "-map", "1:a",
+            "-c:v", "h264_nvenc", "-preset", "p1", "-cq", "26",
+            "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            str(output_path),
+        ]
+    else:
+        console.print(f"  [dim]narração={narration_dur:.0f}s  clipes={video_dur:.0f}s  (sem ajuste)[/dim]")
+        cmd = [
+            FFMPEG, "-y",
+            "-f", "concat", "-safe", "0", "-i", str(concat_file),
+            "-i", str(narration_path),
+            "-map", "0:v", "-map", "1:a",
+            "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
+            "-shortest",
+            str(output_path),
         ]
 
-        if vf:
-            cmd += ["-vf", vf, "-c:v", "libx264", "-preset", "fast", "-crf", "18"]
-        else:
-            cmd += ["-c:v", "copy"]
+    console.print(f"  [dim]{len(scenes)} cenas + {narration_path.name}[/dim]")
 
-        cmd += ["-c:a", "aac", "-b:a", "192k", str(output_path)]
+    with console.status("  [cyan]Renderizando...[/cyan]"):
+        result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace")
 
-        console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
-        result = subprocess.run(cmd, capture_output=True, text=True)
+    # Clean up concat file
+    concat_file.unlink(missing_ok=True)
 
-        if result.returncode != 0:
-            console.print(f"[red]FFmpeg erro (code {result.returncode}):[/red]")
-            console.print(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
-            return output_path
+    if result.returncode != 0:
+        console.print(f"  [red]FFmpeg erro (code {result.returncode}):[/red]")
+        console.print(result.stderr[-500:] if len(result.stderr) > 500 else result.stderr)
+        return output_path
 
-    console.print(f"[green]Vídeo final salvo em {output_path}[/green]")
+    if output_path.exists() and output_path.stat().st_size > 10_000:
+        size_mb = output_path.stat().st_size / 1_048_576
+        console.print(f"  [green]✓[/green] Vídeo final  [dim]{output_path.name} ({size_mb:.1f} MB)[/dim]")
+    else:
+        size = output_path.stat().st_size if output_path.exists() else 0
+        console.print(f"  [red]✗ FFmpeg falhou — arquivo inválido ({size} bytes)[/red]")
+
     return output_path

@@ -190,11 +190,58 @@ def run(
             compose_final_video(
                 video_dir, narration_file, final_path,
                 num_scenes=len(clips),
-                sync_path=sync_file if sync_file.exists() else None,
+                sync_path=None,
             )
         elif clips and not narration_file.exists():
             console.print(f"  [yellow]⚠ Narração não encontrada, pulando composição[/yellow]")
 
         console.print()
+
+    console.print(Rule("[bold green]Concluído![/bold green]", style="green"))
+
+
+@app.command()
+def render(
+    task: int = typer.Argument(..., help="Número da task (ex: 1)"),
+    date: str = typer.Option(None, help="Data da task no formato YYYY-MM-DD (padrão: hoje)"),
+    subtitles: bool = typer.Option(False, "--subtitles/--no-subtitles", help="Incluir legendas animadas"),
+):
+    """Renderiza o vídeo final de uma task já processada (clipes + narração + legendas)."""
+    from datetime import datetime, timezone
+    from auto_reels.config import OUTPUT_DIR
+
+    day = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    task_dir = OUTPUT_DIR / day / f"task-{task:02d}"
+
+    if not task_dir.exists():
+        console.print(f"[red]Task não encontrada: {task_dir}[/red]")
+        raise typer.Exit(1)
+
+    console.print(Rule(f"[bold cyan]render[/bold cyan]  [dim]task-{task:02d} · {day}[/dim]"))
+
+    video_dir = task_dir / "videos"
+    narration_file = task_dir / "narration.mp3"
+    sync_file = task_dir / "sync.txt"
+    final_path = task_dir / "final.mp4"
+
+    clips = sorted(video_dir.glob("scene_*.mp4")) if video_dir.exists() else []
+
+    if not clips:
+        console.print(f"  [red]Nenhum clipe encontrado em {video_dir}[/red]")
+        raise typer.Exit(1)
+
+    if not narration_file.exists():
+        console.print(f"  [red]Narração não encontrada: {narration_file}[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"  [dim]{len(clips)} clipes · narração: {narration_file.name}[/dim]")
+    if sync_file.exists():
+        console.print(f"  [dim]sync: {sync_file.name} (legendas ativas)[/dim]")
+
+    compose_final_video(
+        video_dir, narration_file, final_path,
+        num_scenes=len(clips),
+        sync_path=sync_file if (subtitles and sync_file.exists()) else None,
+    )
 
     console.print(Rule("[bold green]Concluído![/bold green]", style="green"))
