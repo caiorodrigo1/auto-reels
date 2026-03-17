@@ -40,17 +40,22 @@ def _send(history: list[dict], message: str) -> tuple[str, list[dict]]:
             API_URL,
             params={"key": key},
             json=body,
-            timeout=120,
+            timeout=300,
         )
         if resp.status_code == 429:
             wait = min(2 ** attempt * 10, 120) if len(_keys) == 1 else 2
             print(f"    [DEBUG] Rate limited (key ...{key[-4:]}), aguardando {wait}s...")
             time.sleep(wait)
             continue
+        if resp.status_code >= 500:
+            wait = min(2 ** attempt * 5, 60)
+            print(f"    [DEBUG] Gemini {resp.status_code}, aguardando {wait}s...")
+            time.sleep(wait)
+            continue
         resp.raise_for_status()
         break
     else:
-        raise Exception("Gemini API rate limit exceeded after retries")
+        raise Exception("Gemini API indisponível após retries")
 
     data = resp.json()
 

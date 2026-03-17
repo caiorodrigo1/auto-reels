@@ -8,7 +8,7 @@ from rich.console import Console
 
 console = Console()
 
-FFMPEG = "/opt/homebrew/bin/ffmpeg"
+FFMPEG = "ffmpeg"
 
 
 def compose_final_video(
@@ -16,7 +16,7 @@ def compose_final_video(
     narration_path: Path,
     output_path: Path,
     num_scenes: int = 24,
-    volume_db: int = -20,
+    volume_db: int = -30,
 ) -> Path:
     """Compose final video by concatenating scenes, lowering audio, and mixing narration."""
     output_path.parent.mkdir(parents=True, exist_ok=True)

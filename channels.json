@@ -1,16 +1,15 @@
 {
   "channels": [
     { "name": "@EchoTales-v2q", "channel_id": "UCpluBNk8m4FB-lvlueReDDg" },
-    { "name": "@abnerportugal6525", "channel_id": "UCnKPa85EDFExWgAzFeZEUQg" },
-    { "name": "@ Macdeahuabdrfsa", "channel_id": "UCq-vuoCj9F-01o0WPvcG5LA" },
-    { "name": "@ VitalisWay", "channel_id": "UCYYlhRAH9Qx1CZMmGEGvjfA" },
-    { "name": "@ TheUnseenHearts", "channel_id": "UC0g7360QhXHClH4AbffRf6g" },
+    { "name": "@Macdeahuabdrfsa", "channel_id": "UCq-vuoCj9F-01o0WPvcG5LA" },
+    { "name": "@VitalisWay", "channel_id": "UCYYlhRAH9Qx1CZMmGEGvjfA" },
+    { "name": "@TheUnseenHearts", "channel_id": "UC0g7360QhXHClH4AbffRf6g" },
     { "name": "@mindrisedaily5", "channel_id": "UCswp6nYoOf4CwOX2YVGVIhA" },
     {
       "name": "@Wisdomstorytelling-uq9",
       "channel_id": "UCvJmEyS7sWUv8cURl5E_NNA"
     },
-    { "name": "@ TheNightTales2", "channel_id": "UC2cs37EAqdz1mQ-D6lWZDmg" },
-    { "name": "@ stillminds18", "channel_id": "UC8dgCN8D0Rj6ZCIgJQFESDg" }
+    { "name": "@TheNightTales2", "channel_id": "UC2cs37EAqdz1mQ-D6lWZDmg" },
+    { "name": "@stillminds18", "channel_id": "UC8dgCN8D0Rj6ZCIgJQFESDg" }
   ]
 }

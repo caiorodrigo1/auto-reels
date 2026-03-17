@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 import typer
 from rich.console import Console
 from rich.table import Table
@@ -12,13 +13,13 @@ from auto_reels.narration.elevenlabs import generate_speech
 from auto_reels.gemini.agent import extract_characters, send_sync_prompts
 from auto_reels.image_gen.webhook import generate_character_images
 from auto_reels.sync.dotti import generate_sync
-from auto_reels.video_gen.flow import generate_videos_persistent
+from auto_reels.video_gen.glabs import generate_videos
 from auto_reels.editing.compose import compose_final_video
 from auto_reels.output import (
     save_transcription, get_narration_path, save_characters,
     get_task_dir, clean_text,
 )
-from auto_reels.config import SEARCH_DAYS, TOP_N, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
+from auto_reels.config import SEARCH_DAYS, TOP_N, MAX_SHORT_DURATION_SECONDS, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
 
 app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens + imagens")
 console = Console()
@@ -32,8 +33,7 @@ def run(
     characters: bool = typer.Option(True, help="Extrair personagens via Gemini"),
     images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
     sync: bool = typer.Option(True, help="Gerar sincronização Dotti Sync a partir da narração"),
-    videos: bool = typer.Option(False, help="Gerar vídeos via Google Flow (requer login no navegador)"),
-    edit: bool = typer.Option(False, help="Compor vídeo final (concat + narração com ffmpeg)"),
+    videos: bool = typer.Option(True, help="Gerar clipes Veo3 via G-Labs API"),
 ):
     """Busca shorts recentes, seleciona os mais vistos, transcreve, narra, extrai personagens e gera imagens."""
     channels = load_channels()
@@ -56,7 +56,7 @@ def run(
 
         details = get_video_details(video_ids)
         shorts = filter_shorts(details)
-        console.print(f"  Shorts (≤60s): {len(shorts)}")
+        console.print(f"  Shorts (<={MAX_SHORT_DURATION_SECONDS}s): {len(shorts)}")
         all_shorts.extend(shorts)
 
     if not all_shorts:
@@ -138,45 +138,44 @@ def run(
         elif images and not WEBHOOK_API_KEY:
             console.print(f"  [yellow]WEBHOOK_API_KEY não configurada, pulando imagens.[/yellow]")
 
-        # Enviar sync de volta ao agente Gemini
+        # Gerar veo_prompts.txt via Gemini (usando histórico da extração de personagens)
+        veo_prompts_path = get_task_dir(i) / "veo_prompts.txt"
         if sync and gemini_history:
             sync_file = get_task_dir(i) / "sync.txt"
             if sync_file.exists():
-                console.print(f"  Enviando prompts de sync ao agente Gemini...")
+                console.print(f"  Gerando prompts Veo via Gemini...")
                 sync_content = sync_file.read_text(encoding="utf-8")
-                veo_prompts = send_sync_prompts(gemini_history, sync_content)
-                if veo_prompts:
-                    veo_path = get_task_dir(i) / "veo_prompts.txt"
-                    veo_path.write_text(veo_prompts, encoding="utf-8")
-                    console.print(f"  [green]Prompts Veo salvos em {veo_path}[/green]")
+                veo_prompts_text = send_sync_prompts(gemini_history, sync_content)
+                if veo_prompts_text:
+                    veo_prompts_path.write_text(veo_prompts_text, encoding="utf-8")
+                    n = len(re.findall(r"^PROMPT\s+\d+", veo_prompts_text, re.MULTILINE))
+                    console.print(f"  [green]{n} prompts Veo salvos em {veo_prompts_path}[/green]")
                 else:
                     console.print(f"  [red]Falha ao gerar prompts Veo.[/red]")
 
-        # Geração de vídeos via Google Flow
-        if videos:
-            veo_file = get_task_dir(i) / "veo_prompts.txt"
-            if veo_file.exists():
-                console.print(f"  Gerando vídeos via Google Flow...")
-                video_dir = get_task_dir(i) / "videos"
-                img_dir = get_task_dir(i) / "images"
-                char_images = list(img_dir.glob("*.png")) if img_dir.exists() else []
-                generated_videos = generate_videos_persistent(
-                    veo_file, video_dir, image_paths=char_images or None,
-                )
-                console.print(f"  [green]{len(generated_videos)} vídeos gerados em {video_dir}[/green]")
+        # Geração de clipes via G-Labs API
+        video_dir = get_task_dir(i) / "videos"
+        if videos and WEBHOOK_API_KEY and veo_prompts_path.exists():
+            console.print(f"  Gerando clipes Veo3 via G-Labs API...")
+            img_dir = get_task_dir(i) / "images"
+            char_images = sorted(img_dir.glob("*.png")) if img_dir.exists() else []
+            generated_videos = generate_videos(veo_prompts_path, video_dir, image_paths=char_images or None)
+            if generated_videos:
+                console.print(f"  [green]{len(generated_videos)} clipes gerados em {video_dir}[/green]")
             else:
-                console.print(f"  [yellow]veo_prompts.txt não encontrado, pulando vídeos.[/yellow]")
+                console.print(f"  [red]Nenhum clipe gerado.[/red]")
+        elif videos and not veo_prompts_path.exists():
+            console.print(f"  [yellow]veo_prompts.txt não encontrado, pulando geração de vídeos.[/yellow]")
 
-        # Composição do vídeo final
-        if edit:
-            video_dir = get_task_dir(i) / "videos"
-            narration_file = get_narration_path(i)
-            if video_dir.exists() and narration_file.exists():
-                console.print(f"  Compondo vídeo final...")
-                final_path = get_task_dir(i) / "final.mp4"
-                compose_final_video(video_dir, narration_file, final_path)
-            else:
-                console.print(f"  [yellow]Vídeos ou narração não encontrados, pulando composição.[/yellow]")
+        # Composição final: clipes + narração
+        narration_file = get_narration_path(i)
+        clips = sorted(video_dir.glob("scene_*.mp4")) if video_dir.exists() else []
+        if clips and narration_file.exists():
+            console.print(f"  Compondo vídeo final ({len(clips)} clipes)...")
+            final_path = get_task_dir(i) / "final.mp4"
+            compose_final_video(video_dir, narration_file, final_path, num_scenes=len(clips))
+        elif clips and not narration_file.exists():
+            console.print(f"  [yellow]Narração não encontrada, pulando composição.[/yellow]")
 
         console.print()
 

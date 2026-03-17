@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:duckmartians.info)",
+      "Bash(python -c \"from auto_reels.video_gen.glabs import generate_videos; print\\('OK'\\)\" 2>&1)",
+      "Bash(python -c \"from auto_reels.video_gen.glabs import generate_videos; print\\('glabs OK'\\)\" 2>&1 && python -c \"from auto_reels.cli import app; print\\('cli OK'\\)\" 2>&1)",
+      "Bash(which python:*)",
+      "Bash(pip install:*)",
+      "Bash(auto-reels --help 2>&1)",
+      "Bash(auto-reels run:*)",
+      "Bash(auto-reels 2>&1)",
+      "Bash(auto-reels --top 5 2>&1)",
+      "Bash(PYTHONUTF8=1 auto-reels --top 5 2>&1)",
+      "Bash(python -c \"import json; ch = json.load\\(open\\('channels.json'\\)\\); [print\\(c['name'], c['channel_id']\\) for c in ch]\")",
+      "Bash(python -c \"import json; ch = json.load\\(open\\('channels.json'\\)\\); print\\(json.dumps\\(ch, indent=2, ensure_ascii=False\\)[:2000]\\)\")",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom auto_reels.transcription import ytdlp, rapidapi, youtube_transcript\nvid = 'DuqC071teZA'\nprint\\('yt-dlp:', repr\\(ytdlp.fetch_transcript\\(vid\\)\\)[:200] if ytdlp.fetch_transcript\\(vid\\) else 'FAIL'\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom auto_reels.transcription import rapidapi, youtube_transcript\nvid = 'DuqC071teZA'\nr = rapidapi.fetch_transcript\\(vid\\)\nprint\\('RapidAPI:', repr\\(r\\)[:300] if r else 'FAIL'\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom auto_reels.transcription import youtube_transcript\nvid = 'DuqC071teZA'\nr = youtube_transcript.fetch_transcript\\(vid\\)\nprint\\('youtube-transcript-api:', repr\\(r\\)[:300] if r else 'FAIL'\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nimport yt_dlp\nurl = 'https://www.youtube.com/watch?v=DuqC071teZA'\nopts = {'skip_download': True, 'writesubtitles': True, 'writeautomaticsub': True, 'quiet': True}\nwith yt_dlp.YoutubeDL\\(opts\\) as ydl:\n    info = ydl.extract_info\\(url, download=False\\)\nauto = list\\(info.get\\('automatic_captions', {}\\).keys\\(\\)\\)\nprint\\('auto langs:', auto\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom youtube_transcript_api import YouTubeTranscriptApi\ntry:\n    tlist = YouTubeTranscriptApi.list_transcripts\\('DuqC071teZA'\\)\n    for t in tlist:\n        print\\(t.language_code, t.language, t.is_generated\\)\nexcept Exception as e:\n    print\\('ERROR:', e\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"import youtube_transcript_api; print\\(dir\\(youtube_transcript_api.YouTubeTranscriptApi\\)\\)\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom youtube_transcript_api import YouTubeTranscriptApi\napi = YouTubeTranscriptApi\\(\\)\ntlist = api.list\\('DuqC071teZA'\\)\nfor t in tlist:\n    print\\(t.language_code, t.is_generated\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom youtube_transcript_api import YouTubeTranscriptApi\napi = YouTubeTranscriptApi\\(\\)\ntlist = api.list\\('DuqC071teZA'\\)\nt = tlist.find_transcript\\(['en']\\)\nfetched = t.fetch\\(\\)\nprint\\(type\\(fetched\\)\\)\nprint\\(dir\\(fetched\\)\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom youtube_transcript_api import YouTubeTranscriptApi\napi = YouTubeTranscriptApi\\(\\)\ntlist = api.list\\('DuqC071teZA'\\)\nt = tlist.find_transcript\\(['en']\\)\nfetched = t.fetch\\(\\)\nprint\\('\\\\n'.join\\(s.text for s in fetched.snippets\\)[:300]\\)\n\" 2>&1)",
+      "Bash(PYTHONUTF8=1 python -c \"\nfrom auto_reels.transcription.youtube_transcript import fetch_transcript\nt = fetch_transcript\\('DuqC071teZA'\\)\nprint\\('OK:', t[:200] if t else 'FAIL'\\)\n\" 2>&1)"
+    ]
+  }
+}

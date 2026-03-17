@@ -6,7 +6,8 @@ from youtube_transcript_api import YouTubeTranscriptApi
 def fetch_transcript(video_id: str) -> str | None:
     """Fetch transcript using youtube-transcript-api. Returns plain text or None."""
     try:
-        transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+        api = YouTubeTranscriptApi()
+        transcript_list = api.list(video_id)
 
         # Try Portuguese first, then any language
         try:
@@ -17,6 +18,7 @@ def fetch_transcript(video_id: str) -> str | None:
             )
 
         fetched = transcript.fetch()
-        return "\n".join(snippet.text for snippet in fetched)
-    except Exception:
+        return "\n".join(snippet.text for snippet in fetched.snippets)
+    except Exception as e:
+        print(f"    [DEBUG] youtube-transcript-api: {e}")
         return None
