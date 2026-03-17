@@ -34,7 +34,7 @@ def _step(label: str, icon: str = "•"):
 def run(
     days: int = typer.Option(SEARCH_DAYS, help="Dias para buscar vídeos recentes"),
     count: int = typer.Option(TOP_N, help="Quantidade de vídeos a processar"),
-    english: bool = typer.Option(False, "--english/--ptbr", help="Manter narração em inglês (sem tradução para pt-BR)"),
+    english: bool = typer.Option(True, "--english/--ptbr", help="Manter narração em inglês (sem tradução para pt-BR)"),
     narrate: bool = typer.Option(True, help="Gerar narração via ai33.pro"),
     characters: bool = typer.Option(True, help="Extrair personagens via Gemini"),
     images: bool = typer.Option(True, help="Gerar imagens dos personagens via webhook"),
