@@ -146,6 +146,30 @@ def _translate(prompt: str, fallback: str = "") -> str:
         return fallback
 
 
+def translate_to_es(text: str) -> str:
+    """Translate text to Spanish using Gemini."""
+    if not GEMINI_API_KEY:
+        return text
+
+    print("    [INFO] Traduzindo para espanhol via Gemini...")
+    prompt = f"Traduce el siguiente texto al español. Devuelve solo el texto traducido, sin explicaciones:\n\n{text}"
+    return _translate(prompt, fallback=text)
+
+
+def generate_cultural_chars(history: list, culture: str) -> tuple[str | None, list]:
+    """Ask Gemini to regenerate CHAR prompts with cultural appearance."""
+    prompt = (
+        f"Now regenerate the CHAR reference prompts (CHAR1, CHAR2, CHAR3) "
+        f"but adapted for {culture} cultural appearance. Keep the same characters, "
+        f"same ages, same roles, but change their physical appearance to reflect "
+        f"{culture} ethnicity and cultural traits. Use the exact same format as before."
+    )
+    print(f"    [INFO] Gerando personagens culturais ({culture})...")
+    text, history = _send(history, prompt)
+    print(f"    [INFO] Personagens {culture} recebidos ({len(text)} chars)")
+    return text, history
+
+
 def send_sync_prompts(history: list, sync_text: str) -> str | None:
     """Send Dotti Sync prompts to the agent, continuing the conversation."""
     if not GEMINI_API_KEY:

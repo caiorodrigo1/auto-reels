@@ -56,6 +56,14 @@ def get_task_dir(task_number: int) -> Path:
     return task_dir
 
 
+def get_lang_dir(task_number: int, lang: str) -> Path:
+    """Return the language-specific subdirectory for a task (e.g. task-01/en/)."""
+    task_dir = get_task_dir(task_number)
+    lang_dir = task_dir / lang
+    lang_dir.mkdir(parents=True, exist_ok=True)
+    return lang_dir
+
+
 def save_characters(task_number: int, text: str) -> Path:
     """Save extracted characters to output/YYYY-MM-DD/task-NN/characters.txt."""
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")

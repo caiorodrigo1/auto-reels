@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
 from auto_reels.config import YOUTUBE_API_KEY, SEARCH_DAYS
 
@@ -21,24 +22,30 @@ def search_recent_videos(channel_id: str, days: int = SEARCH_DAYS) -> list[str]:
     video_ids: list[str] = []
     page_token: str | None = None
 
-    while True:
-        request = youtube.search().list(
-            part="id",
-            channelId=channel_id,
-            type="video",
-            order="date",
-            publishedAfter=published_after,
-            maxResults=50,
-            pageToken=page_token,
-        )
-        response = request.execute()
+    try:
+        while True:
+            request = youtube.search().list(
+                part="id",
+                channelId=channel_id,
+                type="video",
+                order="date",
+                publishedAfter=published_after,
+                maxResults=50,
+                pageToken=page_token,
+            )
+            response = request.execute()
 
-        for item in response.get("items", []):
-            video_ids.append(item["id"]["videoId"])
+            for item in response.get("items", []):
+                video_ids.append(item["id"]["videoId"])
 
-        page_token = response.get("nextPageToken")
-        if not page_token:
-            break
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+    except HttpError as e:
+        if e.resp.status == 403:
+            print(f"    [WARN] YouTube quota exceeded for channel {channel_id}, skipping")
+        else:
+            raise
 
     return video_ids
 
