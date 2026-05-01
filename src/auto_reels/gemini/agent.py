@@ -11,17 +11,33 @@ SYSTEM_PROMPT = (Path(__file__).parent / "system_prompt.txt").read_text(encoding
 MODEL = "gemini-2.5-flash"
 API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{MODEL}:generateContent"
 
-# Support multiple keys separated by comma for rotation
 _keys = [k.strip() for k in GEMINI_API_KEY.split(",") if k.strip()]
-_key_index = 0
+KEY_RETRY_WAIT = 15
+_RETRY_ROUNDS = 3
 
 
-def _next_key() -> str:
-    """Rotate to the next API key."""
-    global _key_index
-    key = _keys[_key_index % len(_keys)]
-    _key_index += 1
-    return key
+def _call_gemini(body: dict) -> httpx.Response:
+    """Try all keys up to _RETRY_ROUNDS times, 15s between each attempt."""
+    last_resp = None
+    for _ in range(_RETRY_ROUNDS):
+        for key in _keys:
+            try:
+                resp = httpx.post(API_URL, params={"key": key}, json=body, timeout=300)
+            except Exception as e:
+                print(f"    [DEBUG] Gemini network error (key ...{key[-4:]}): {e}, aguardando {KEY_RETRY_WAIT}s...")
+                time.sleep(KEY_RETRY_WAIT)
+                continue
+            last_resp = resp
+            if resp.status_code == 400:
+                print(f"    [DEBUG] Gemini 400 (key ...{key[-4:]}): {resp.text[:200]}")
+                raise Exception(f"Gemini 400: {resp.text[:200]}")
+            if resp.status_code in (429, 403, 500, 503):
+                print(f"    [DEBUG] Gemini {resp.status_code} (key ...{key[-4:]}), aguardando {KEY_RETRY_WAIT}s...")
+                time.sleep(KEY_RETRY_WAIT)
+                continue
+            resp.raise_for_status()
+            return resp
+    raise Exception(f"Gemini API indisponível após testar {len(_keys)} key(s) × {_RETRY_ROUNDS} rounds")
 
 
 def _send(history: list[dict], message: str) -> tuple[str, list[dict]]:
@@ -34,34 +50,8 @@ def _send(history: list[dict], message: str) -> tuple[str, list[dict]]:
         "contents": history,
     }
 
-    for attempt in range(8):
-        key = _next_key() if len(_keys) > 1 else _keys[0]
-        resp = httpx.post(
-            API_URL,
-            params={"key": key},
-            json=body,
-            timeout=300,
-        )
-        if resp.status_code == 429:
-            wait = min(2 ** attempt * 10, 120) if len(_keys) == 1 else 2
-            print(f"    [DEBUG] Rate limited (key ...{key[-4:]}), aguardando {wait}s...")
-            time.sleep(wait)
-            continue
-        if resp.status_code >= 500:
-            wait = min(2 ** attempt * 5, 60)
-            print(f"    [DEBUG] Gemini {resp.status_code}, aguardando {wait}s...")
-            time.sleep(wait)
-            continue
-        if resp.status_code == 400:
-            print(f"    [DEBUG] Gemini 400 (key inválida? ...{key[-6:]}): {resp.text[:200]}")
-            break
-        resp.raise_for_status()
-        break
-    else:
-        raise Exception("Gemini API indisponível após retries")
-
+    resp = _call_gemini(body)
     data = resp.json()
-
     text = data["candidates"][0]["content"]["parts"][0]["text"]
     history.append({"role": "model", "parts": [{"text": text}]})
     return text, history
@@ -120,25 +110,8 @@ def _translate(prompt: str, fallback: str = "") -> str:
     body = {
         "contents": [{"role": "user", "parts": [{"text": prompt}]}],
     }
-    resp = None
-    for attempt in range(8):
-        key = _next_key() if len(_keys) > 1 else _keys[0]
-        resp = httpx.post(API_URL, params={"key": key}, json=body, timeout=300)
-        if resp.status_code == 429:
-            wait = min(2 ** attempt * 10, 120) if len(_keys) == 1 else 2
-            time.sleep(wait)
-            continue
-        if resp.status_code >= 500:
-            time.sleep(min(2 ** attempt * 5, 60))
-            continue
-        if resp.status_code == 400:
-            return fallback
-        resp.raise_for_status()
-        break
-    else:
-        return fallback
-
     try:
+        resp = _call_gemini(body)
         translated = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
         print(f"    [INFO] Tradução concluída ({len(translated)} chars)")
         return translated
@@ -177,6 +150,10 @@ def send_sync_prompts(history: list, sync_text: str) -> str | None:
         return None
 
     print("    [INFO] Enviando prompts de sync ao Gemini...")
-    text, _ = _send(history, sync_text)
+    try:
+        text, _ = _send(history, sync_text)
+    except Exception as e:
+        print(f"    [DEBUG] Falha no send_sync_prompts: {e}")
+        return None
     print(f"    [INFO] Resposta recebida ({len(text)} chars)")
     return text

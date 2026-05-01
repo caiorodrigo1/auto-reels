@@ -20,6 +20,9 @@ RAPIDAPI_HOST: str = os.environ.get(
 AI33_API_KEY: str = os.environ.get("AI33_API_KEY", "")
 AI33_VOICE_ID: str = os.environ.get("AI33_VOICE_ID", "JBFqnCBsd6RMkjVDRZzb")
 
+MINIMAX_VOICE_ID: str = os.environ.get("MINIMAX_VOICE_ID", "")
+MINIMAX_MODEL: str = os.environ.get("MINIMAX_MODEL", "speech-2.6-hd")
+
 CLAUDE_PROJECT_URL: str = os.environ.get("CLAUDE_PROJECT_URL", "")
 
 GEMINI_API_KEY: str = os.environ.get("GEMINI_API_KEY", "")

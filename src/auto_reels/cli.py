@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 import re
+import sys
 import typer
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 from rich.console import Console
 from rich.rule import Rule
 from rich.table import Table
@@ -10,7 +16,7 @@ from auto_reels.channels import load_channels
 from auto_reels.youtube.api import search_recent_videos, get_video_details
 from auto_reels.youtube.shorts import filter_shorts, rank_and_select
 from auto_reels.transcription.service import transcribe
-from auto_reels.narration.elevenlabs import generate_speech
+from auto_reels.narration.minimax import generate_speech
 from auto_reels.gemini.agent import (
     extract_characters, send_sync_prompts, translate_to_ptbr,
     translate_to_es, translate_to_en, generate_cultural_chars, _detect_language,
@@ -22,11 +28,12 @@ from auto_reels.editing.compose import compose_final_video
 from auto_reels.output import (
     save_transcription, save_characters,
     get_task_dir, get_lang_dir, clean_text,
+    load_processed_ids, save_processed_id,
 )
 from auto_reels.config import SEARCH_DAYS, TOP_N, MAX_SHORT_DURATION_SECONDS, AI33_API_KEY, GEMINI_API_KEY, WEBHOOK_API_KEY, DOTTI_SYNC_URL
 
 app = typer.Typer(name="auto-reels", help="Pipeline de YouTube Shorts + transcrição + narração + personagens + imagens")
-console = Console()
+console = Console(force_terminal=True, legacy_windows=False)
 
 LANG_LABELS = {"en": "EN", "es": "ES", "ptbr": "PT-BR"}
 CULTURE_MAP = {"es": "Mexican", "ptbr": "Brazilian"}
@@ -104,7 +111,7 @@ def _process_language(
                 veo_prompts_text = send_sync_prompts(gemini_history, sync_content)
                 if veo_prompts_text:
                     veo_prompts_path.write_text(veo_prompts_text, encoding="utf-8")
-                    n = len(re.findall(r"^PROMPT\s+\d+", veo_prompts_text, re.MULTILINE))
+                    n = len(re.findall(r"^\*{0,2}PROMPT\s+\d+", veo_prompts_text, re.MULTILINE))
                     console.print(f"  [green]✓[/green] {n} prompts Veo salvos  [dim]{veo_prompts_path.name}[/dim]")
                 else:
                     console.print(f"  [red]✗ Falha ao gerar prompts Veo[/red]")
@@ -179,11 +186,18 @@ def run(
         console.print(f"    Shorts (<={MAX_SHORT_DURATION_SECONDS}s): {len(shorts)}")
         all_shorts.extend(shorts)
 
-    if not all_shorts:
-        console.print("\n[yellow]Nenhum short encontrado.[/yellow]")
+    # Filter out already-processed videos
+    processed_ids = load_processed_ids()
+    new_shorts = [s for s in all_shorts if s["video_id"] not in processed_ids]
+    if processed_ids and len(new_shorts) < len(all_shorts):
+        skipped = len(all_shorts) - len(new_shorts)
+        console.print(f"\n  [dim]{skipped} vídeo(s) já processado(s), ignorando.[/dim]")
+
+    if not new_shorts:
+        console.print("\n[yellow]Nenhum short novo encontrado (todos já processados).[/yellow]")
         raise typer.Exit(0)
 
-    selected = rank_and_select(all_shorts, top_n=count)
+    selected = rank_and_select(new_shorts, top_n=count)
 
     console.print()
     table = Table(title=f"Top {len(selected)} Shorts por Views", border_style="dim")
@@ -196,7 +210,14 @@ def run(
     console.print(table)
     console.print()
 
-    for i, video in enumerate(selected, 1):
+    # Detect existing task directories to continue numbering
+    from auto_reels.config import OUTPUT_DIR
+    today = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).strftime("%Y-%m-%d")
+    today_dir = OUTPUT_DIR / today
+    existing = [d for d in today_dir.glob("task-*") if d.is_dir()] if today_dir.exists() else []
+    start_number = len(existing) + 1
+
+    for i, video in enumerate(selected, start_number):
         console.print(Rule(f"[bold]Task {i:02d}[/bold]  [dim]{video['title']}[/dim]", style="dim"))
 
         # 1. Transcription (once)
@@ -221,7 +242,11 @@ def run(
         gemini_history = []
         if characters and GEMINI_API_KEY:
             _step("Personagens (Gemini)")
-            chars, gemini_history = extract_characters(clean_text(narration_text_en))
+            try:
+                chars, gemini_history = extract_characters(clean_text(narration_text_en))
+            except Exception as e:
+                console.print(f"  [red]✗ Gemini indisponível: {e}[/red]")
+                chars, gemini_history = None, []
             if chars:
                 char_path = save_characters(i, chars)
                 console.print(f"  [green]✓[/green] Personagens salvos  [dim]{char_path.name}[/dim]")
@@ -236,7 +261,11 @@ def run(
             culture = CULTURE_MAP.get(lang)
             if culture and gemini_history and chars:
                 _step(f"Personagens culturais ({culture})")
-                culture_chars, gemini_history = generate_cultural_chars(gemini_history, culture)
+                try:
+                    culture_chars, gemini_history = generate_cultural_chars(gemini_history, culture)
+                except Exception as e:
+                    console.print(f"  [red]✗ Gemini indisponível: {e}[/red]")
+                    culture_chars = None
                 if culture_chars:
                     cultural_chars[lang] = culture_chars
                     console.print(f"  [green]✓[/green] Personagens {culture} gerados")
@@ -266,6 +295,8 @@ def run(
                 do_videos=videos,
             )
 
+        # Mark video as processed
+        save_processed_id(video["video_id"])
         console.print()
 
     console.print(Rule("[bold green]Concluído![/bold green]", style="green"))

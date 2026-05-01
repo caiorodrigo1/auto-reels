@@ -25,9 +25,9 @@ MODEL = "veo_31_fast_relaxed"
 ASPECT_RATIO = "9:16"
 POLL_TIMEOUT = 600
 POLL_INTERVAL = 10
-CONCURRENCY = 6
+CONCURRENCY = 10
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 def generate_videos(
@@ -165,7 +165,9 @@ def _generate_one(
     num = prompt_info["number"]
     scene_chars = _parse_scene_chars(prompt_info["characters"])
     ref_images = [char_b64[c] for c in scene_chars if c in char_b64]
-    mode = "components" if ref_images else "text_to_video"
+    # components mode requires special G-Labs accounts; fall back to text_to_video
+    mode = "text_to_video"
+    ref_images = []
 
     def _upd(status: str):
         if slot_task is not None:
@@ -217,7 +219,9 @@ def _generate_one(
                 return result
 
             if status == "failed":
+                error_msg = data.get("error") or data.get("message") or ""
                 _upd(f"[red]falhou[/red]")
+                console.print(f"    [dim red]#{num:03d} failed: {error_msg or 'sem detalhes'}[/dim red]")
                 return None
 
             _upd(f"gerando... {elapsed}s")
@@ -250,11 +254,11 @@ def _download(base: str, headers: dict, url: str, output_path: Path) -> Path | N
 
 def _parse_veo_prompts(text: str) -> list[dict]:
     pattern = re.compile(
-        r"PROMPT\s+(\d+)\s+\[([^\]]*)\]\s*\|\s*([\d:]+\s*-\s*[\d:]+)\s*:(.*)",
+        r"\*{0,2}PROMPT\s+(\d+)\s+\[([^\]]*)\]\s*\|\s*([\d:]+\s*-\s*[\d:]+)\s*:\*{0,2}\s*(.*)",
         re.DOTALL,
     )
     prompts = []
-    for block in re.split(r"\n(?=PROMPT\s+\d)", text):
+    for block in re.split(r"\n(?=\*{0,2}PROMPT\s+\d)", text):
         m = pattern.match(block.strip())
         if m:
             prompts.append({

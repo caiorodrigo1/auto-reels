@@ -5,7 +5,7 @@ from rich.console import Console
 
 from auto_reels.config import MAX_SHORT_DURATION_SECONDS, TOP_N
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 def filter_shorts(videos: list[dict]) -> list[dict]:

@@ -21,18 +21,30 @@ from auto_reels.config import WEBHOOK_API_URL, WEBHOOK_API_KEY
 MODEL = "nano_banana_2"
 ASPECT_RATIO = "9:16"
 
-console = Console()
+console = Console(force_terminal=True)
+
+
+MAX_PARALLEL = 10
 
 
 def generate_character_images(characters_text: str, output_dir: Path) -> list[Path]:
-    """Parse character prompts from characters.txt and generate images."""
+    """Parse character prompts from characters.txt and generate images.
+
+    Submits up to MAX_PARALLEL images concurrently to the webhook API.
+    """
     prompts = _parse_reference_prompts(characters_text)
     if not prompts:
         console.print("  [yellow]Nenhum prompt de referência encontrado[/yellow]")
         return []
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    results = []
+    results: list[Path | None] = [None] * len(prompts)
+
+    base = WEBHOOK_API_URL.rstrip("/")
+    headers = {
+        "Content-Type": "application/json",
+        "X-API-Key": WEBHOOK_API_KEY,
+    }
 
     with Progress(
         SpinnerColumn(),
@@ -49,43 +61,114 @@ def generate_character_images(characters_text: str, output_dir: Path) -> list[Pa
             total=len(prompts),
             status=f"0/{len(prompts)} geradas",
         )
-        char_task = progress.add_task(
-            "  [dim]aguardando...[/dim]",
-            total=None,
-            status="",
-        )
 
         ok = 0
         failed = 0
 
-        for i, (label, prompt) in enumerate(prompts, 1):
-            output_path = output_dir / f"char{i}.png"
-            progress.update(char_task, description=f"  [yellow]{label}[/yellow]", status="enviando...")
+        # Process in batches of MAX_PARALLEL
+        for batch_start in range(0, len(prompts), MAX_PARALLEL):
+            batch = prompts[batch_start : batch_start + MAX_PARALLEL]
+            batch_indices = list(range(batch_start, batch_start + len(batch)))
 
-            path = _generate_single(prompt, output_path, progress, char_task)
-            if path:
-                results.append(path)
-                ok += 1
-                progress.update(char_task, status="[green]concluído[/green]")
-            else:
+            # 1. Submit all in batch
+            pending: list[tuple[int, str, str, Path]] = []  # (index, label, task_id, output_path)
+            for offset, (label, prompt) in enumerate(batch):
+                idx = batch_indices[offset]
+                output_path = output_dir / f"char{idx + 1}.png"
+                try:
+                    resp = httpx.post(
+                        f"{base}/api/image/generate",
+                        headers=headers,
+                        json={"prompt": prompt, "model": MODEL, "aspect_ratio": ASPECT_RATIO},
+                        timeout=30,
+                    )
+                    resp.raise_for_status()
+                    task_id = resp.json()["task_id"]
+                    pending.append((idx, label, task_id, output_path))
+                    console.print(f"    [dim]Enviado: {label}[/dim]")
+                except Exception as e:
+                    console.print(f"    [red]Erro ao enviar {label}: {e}[/red]")
+                    failed += 1
+                    progress.update(overall, advance=1)
+
+            if not pending:
+                continue
+
+            console.print(f"  [cyan]Aguardando {len(pending)} imagens em paralelo...[/cyan]")
+
+            # 2. Poll all pending tasks until all complete
+            remaining_tasks = {task_id: (idx, label, output_path) for idx, label, task_id, output_path in pending}
+            elapsed = 0
+            interval = 5
+            max_wait = 300
+
+            while remaining_tasks and elapsed < max_wait:
+                time.sleep(interval)
+                elapsed += interval
+
+                done_ids = []
+                for task_id, (idx, label, output_path) in remaining_tasks.items():
+                    try:
+                        resp = httpx.get(f"{base}/api/status/{task_id}", headers=headers, timeout=15)
+                        resp.raise_for_status()
+                        data = resp.json()
+                        status = data.get("status")
+
+                        if status == "completed":
+                            image_results = data.get("results", [])
+                            if image_results:
+                                # Download
+                                image_url = unquote(image_results[0])
+                                parsed = urlparse(image_url)
+                                parsed_base = urlparse(base)
+                                download_url = image_url.replace(
+                                    f"{parsed.scheme}://{parsed.netloc}",
+                                    f"{parsed_base.scheme}://{parsed_base.netloc}",
+                                )
+                                img_resp = httpx.get(download_url, headers=headers, timeout=60, follow_redirects=True)
+                                img_resp.raise_for_status()
+                                output_path.write_bytes(img_resp.content)
+                                results[idx] = output_path
+                                ok += 1
+                                console.print(f"    [green]OK: {label}[/green]")
+                            else:
+                                failed += 1
+                                console.print(f"    [red]Sem resultado: {label}[/red]")
+                            done_ids.append(task_id)
+                            progress.update(overall, advance=1)
+
+                        elif status == "failed":
+                            failed += 1
+                            done_ids.append(task_id)
+                            progress.update(overall, advance=1)
+                            console.print(f"    [red]Falhou: {label}[/red]")
+
+                    except Exception:
+                        pass  # retry next cycle
+
+                for tid in done_ids:
+                    remaining_tasks.pop(tid)
+
+                if remaining_tasks:
+                    progress.update(
+                        overall,
+                        status=f"[green]{ok} ok[/green] | {len(remaining_tasks)} gerando... {elapsed}s",
+                    )
+
+            # Timeout stragglers
+            for task_id, (idx, label, _) in remaining_tasks.items():
                 failed += 1
-                progress.update(char_task, status="[red]falhou[/red]")
+                progress.update(overall, advance=1)
+                console.print(f"    [red]Timeout: {label}[/red]")
 
-            status_parts = [f"[green]{ok} ok[/green]"]
-            if failed:
-                status_parts.append(f"[red]{failed} falhou[/red]")
-            remaining = len(prompts) - ok - failed
-            if remaining:
-                status_parts.append(f"{remaining} restantes")
-            progress.update(overall, advance=1, status="  |  ".join(status_parts))
+        progress.update(overall, status=f"[green]{ok} ok[/green]" + (f" | [red]{failed} falhou[/red]" if failed else ""))
 
-        progress.update(char_task, visible=False)
-
+    valid = [r for r in results if r is not None]
     console.print(
-        f"  [bold green]{len(results)}/{len(prompts)} imagens geradas[/bold green]"
+        f"  [bold green]{len(valid)}/{len(prompts)} imagens geradas[/bold green]"
         + (f"  [red]({failed} falharam)[/red]" if failed else "")
     )
-    return results
+    return valid
 
 
 def _generate_single(

@@ -4,7 +4,7 @@ from rich.console import Console
 
 from auto_reels.transcription import ytdlp, rapidapi, youtube_transcript
 
-console = Console()
+console = Console(force_terminal=True)
 
 
 def transcribe(video_id: str) -> str | None:

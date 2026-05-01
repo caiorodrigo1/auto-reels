@@ -18,11 +18,11 @@ def parse_veo_prompts(text: str) -> list[dict]:
         PROMPT 001 [Char1, Char2] | 00:00 - 00:08:prompt text here
     """
     pattern = re.compile(
-        r"PROMPT\s+(\d+)\s+\[([^\]]*)\]\s*\|\s*([\d:]+\s*-\s*[\d:]+)\s*:(.*)",
+        r"\*{0,2}PROMPT\s+(\d+)\s+\[([^\]]*)\]\s*\|\s*([\d:]+\s*-\s*[\d:]+)\s*:\*{0,2}\s*(.*)",
         re.DOTALL,
     )
     prompts = []
-    for block in re.split(r"\n(?=PROMPT\s+\d)", text):
+    for block in re.split(r"\n(?=\*{0,2}PROMPT\s+\d)", text):
         m = pattern.match(block.strip())
         if m:
             prompts.append({

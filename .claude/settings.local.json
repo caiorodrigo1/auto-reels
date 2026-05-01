@@ -49,7 +49,30 @@
       "Bash(cmd //c 'schtasks /create /tn \"AutoReels\" /tr \"C:\\\\Projects\\\\auto-reels\\\\run_daily.bat\" /sc daily /st 05:00 /rl highest /f' 2>&1)",
       "Bash(cmd //c 'schtasks /create /tn \"AutoReels\" /tr \"C:\\\\Projects\\\\auto-reels\\\\run_daily.bat\" /sc daily /st 05:00 /f' 2>&1)",
       "Bash(cmd //c \"schtasks /create /tn AutoReels /tr C:\\\\\\\\Projects\\\\\\\\auto-reels\\\\\\\\run_daily.bat /sc daily /st 05:00 /f\" 2>&1)",
-      "Bash(cmd //c \"schtasks /query /tn AutoReels /v /fo list\" 2>&1)"
+      "Bash(cmd //c \"schtasks /query /tn AutoReels /v /fo list\" 2>&1)",
+      "Bash(powershell -Command \"Get-ScheduledTask | Where-Object { \\\\$_.TaskName -like '*auto*' -or \\\\$_.TaskName -like '*reels*' -or \\\\$_.TaskName -like '*daily*' } | Format-List TaskName, State, LastRunTime, LastTaskResult\")",
+      "Bash(powershell -Command \"Get-ScheduledTask -TaskName 'AutoReels' | Get-ScheduledTaskInfo | Format-List *\")",
+      "Read(//d C:/Projects/**)",
+      "Bash(PYTHONIOENCODING=utf-8 PYTHONLEGACYWINDOWSSTDIO=utf-8 auto-reels run --languages en,es,ptbr)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \":*)",
+      "Bash(PYTHONIOENCODING=utf-8 PYTHONLEGACYWINDOWSSTDIO=utf-8 auto-reels render 4 --lang es)",
+      "Bash(PYTHONIOENCODING=utf-8 PYTHONLEGACYWINDOWSSTDIO=utf-8 auto-reels render 4 --lang ptbr)",
+      "Bash(tasklist)",
+      "Bash(schtasks.exe /query /fo LIST /v)",
+      "Bash(schtasks.exe /query /fo CSV /v)",
+      "Bash(cmd.exe /c \"schtasks /query /fo LIST /v\")",
+      "Bash(powershell.exe -Command \"Get-ScheduledTask | Where-Object { \\\\$_.TaskName -match 'auto|reels|daily' } | Format-List TaskName, State, Triggers\")",
+      "Bash(powershell.exe -Command \"Get-ScheduledTask -TaskName 'AutoReels' | Get-ScheduledTaskInfo | Format-List; \\(Get-ScheduledTask -TaskName 'AutoReels'\\).Triggers | Format-List\")",
+      "Bash(curl:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python regen_pending.py)",
+      "Bash(PYTHONIOENCODING=utf-8 python -c \"\nfrom pathlib import Path\nfrom auto_reels.editing.compose import compose_final_video\n\ntask_dir = Path\\('output/2026-03-25/task-01/ptbr'\\)\nvid_dir = task_dir / 'videos'\nnarration = task_dir / 'narration.mp3'\nfinal = task_dir / 'final.mp4'\nclips = sorted\\(vid_dir.glob\\('scene_*.mp4'\\)\\)\nprint\\(f'{len\\(clips\\)} clipes encontrados'\\)\ncompose_final_video\\(vid_dir, narration, final, num_scenes=len\\(clips\\), sync_path=None\\)\n\" 2>&1)",
+      "Bash(PYTHONIOENCODING=utf-8 PYTHONLEGACYWINDOWSSTDIO=utf-8 python -X utf8 regen_pending.py)",
+      "Bash(rm -rf C:/Projects/auto-reels/output/2026-04-07/task-02)",
+      "Bash(PYTHONIOENCODING=utf-8 auto-reels run --languages en,es,ptbr --count 1)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(poetry run:*)",
+      "Bash(auto-reels --help)",
+      "Bash(auto-reels render *)"
     ]
   }
 }

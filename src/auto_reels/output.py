@@ -1,11 +1,30 @@
 from __future__ import annotations
 
 import html
+import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 
 from auto_reels.config import OUTPUT_DIR
+
+PROCESSED_FILE = OUTPUT_DIR / "processed.json"
+
+
+def load_processed_ids() -> set[str]:
+    """Load set of already-processed video IDs."""
+    if PROCESSED_FILE.exists():
+        data = json.loads(PROCESSED_FILE.read_text(encoding="utf-8"))
+        return set(data)
+    return set()
+
+
+def save_processed_id(video_id: str) -> None:
+    """Append a video ID to the processed list."""
+    ids = load_processed_ids()
+    ids.add(video_id)
+    PROCESSED_FILE.parent.mkdir(parents=True, exist_ok=True)
+    PROCESSED_FILE.write_text(json.dumps(sorted(ids), indent=2), encoding="utf-8")
 
 
 def clean_text(text: str) -> str:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import httpx
 
-from auto_reels.config import AI33_API_KEY, AI33_VOICE_ID
+from auto_reels.config import AI33_API_KEY, MINIMAX_VOICE_ID, MINIMAX_MODEL
 
 BASE_URL = "https://api.ai33.pro"
 KEY_RETRY_WAIT = 15
@@ -14,10 +14,7 @@ _keys = [k.strip() for k in AI33_API_KEY.split(",") if k.strip()]
 
 
 def generate_speech(text: str, output_path: Path) -> Path | None:
-    """Convert text to speech via ai33.pro TTS API and save as MP3.
-
-    Tries all configured API keys with a 15s pause between each attempt.
-    """
+    """Convert text to speech via ai33.pro MiniMax TTS and save as MP3."""
     if not _keys:
         return None
 
@@ -35,32 +32,36 @@ def generate_speech(text: str, output_path: Path) -> Path | None:
 
 
 def _try_generate(key: str, text: str, output_path: Path) -> Path | None:
-    """Try TTS generation with a single API key."""
-    url = f"{BASE_URL}/v1/text-to-speech/{AI33_VOICE_ID}"
-    params = {"output_format": "mp3_44100_128"}
     headers = {
         "Content-Type": "application/json",
         "xi-api-key": key,
     }
     payload = {
         "text": text,
-        "model_id": "eleven_multilingual_v2",
+        "model": MINIMAX_MODEL,
+        "voice_setting": {
+            "voice_id": MINIMAX_VOICE_ID,
+            "vol": 1,
+            "pitch": 0,
+            "speed": 1,
+        },
+        "language_boost": "Auto",
     }
 
     try:
-        resp = httpx.post(url, params=params, headers=headers, json=payload, timeout=30)
+        resp = httpx.post(f"{BASE_URL}/v1m/task/text-to-speech", headers=headers, json=payload, timeout=30)
         resp.raise_for_status()
         data = resp.json()
 
         if not data.get("success"):
-            print(f"    [DEBUG] TTS submit failed (key ...{key[-4:]}): {data}")
+            print(f"    [DEBUG] MiniMax submit failed (key ...{key[-4:]}): {data}")
             return None
 
         task_id = data["task_id"]
-        print(f"    [DEBUG] TTS task_id: {task_id} (key ...{key[-4:]})")
+        print(f"    [DEBUG] MiniMax task_id: {task_id} (key ...{key[-4:]})")
 
     except Exception as e:
-        print(f"    [DEBUG] TTS submit exception (key ...{key[-4:]}): {e}")
+        print(f"    [DEBUG] MiniMax submit exception (key ...{key[-4:]}): {e}")
         return None
 
     audio_url = _poll_task(task_id, headers)
@@ -74,12 +75,11 @@ def _try_generate(key: str, text: str, output_path: Path) -> Path | None:
         output_path.write_bytes(audio_resp.content)
         return output_path
     except Exception as e:
-        print(f"    [DEBUG] Audio download exception (key ...{key[-4:]}): {e}")
+        print(f"    [DEBUG] MiniMax audio download exception: {e}")
         return None
 
 
-def _poll_task(task_id: str, headers: dict, max_wait: int = 120) -> str | None:
-    """Poll GET /v1/task/{task_id} until done. Returns audio_url or None."""
+def _poll_task(task_id: str, headers: dict, max_wait: int = 300) -> str | None:
     url = f"{BASE_URL}/v1/task/{task_id}"
     elapsed = 0
     interval = 3
@@ -95,23 +95,22 @@ def _poll_task(task_id: str, headers: dict, max_wait: int = 120) -> str | None:
                 audio_url = data.get("metadata", {}).get("audio_url")
                 if audio_url:
                     return audio_url
-                print(f"    [DEBUG] Task done but no audio_url: {data}")
+                print(f"    [DEBUG] MiniMax task done mas sem audio_url: {data}")
                 return None
 
             if status == "error":
-                print(f"    [DEBUG] Task error: {data.get('error_message')}")
+                print(f"    [DEBUG] MiniMax task error: {data.get('error_message')}")
                 return None
 
-            # "doing" or other - still processing
             progress = data.get("progress", 0)
-            print(f"    [DEBUG] Task progress: {progress}%")
+            print(f"    [DEBUG] MiniMax progress: {progress}%")
             time.sleep(interval)
             elapsed += interval
 
         except Exception as e:
-            print(f"    [DEBUG] Poll exception: {e}")
+            print(f"    [DEBUG] MiniMax poll exception: {e}")
             time.sleep(interval)
             elapsed += interval
 
-    print(f"    [DEBUG] Polling timeout after {max_wait}s")
+    print(f"    [DEBUG] MiniMax polling timeout após {max_wait}s")
     return None
