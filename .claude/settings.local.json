@@ -72,7 +72,9 @@
       "Bash(echo \"Exit: $?\")",
       "Bash(poetry run:*)",
       "Bash(auto-reels --help)",
-      "Bash(auto-reels render *)"
+      "Bash(auto-reels render *)",
+      "PowerShell($src = \"C:\\\\Projects\\\\auto-reels\")",
+      "PowerShell($dst = \"C:\\\\Projects\\\\auto-reels-fork\")"
     ]
   }
 }
